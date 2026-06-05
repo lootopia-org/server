@@ -12,7 +12,7 @@ spec:
           command: ["/app/migrate"]
           envFrom:
             - configMapRef:
-              name: app-config
+                name: app-config
       containers:
         - name: server
           envFrom:
