@@ -21,12 +21,9 @@ spec:
           image: ghcr.io/lootopia-org/server:latest
           ports:
             - containerPort: 80
-          env:
-            - name: ENV
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: env          
+          envFrom:
+            configMapKeyRef:
+              name: app-config
           resources:
             requests:
               cpu: "50m"
