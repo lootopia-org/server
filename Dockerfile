@@ -1,17 +1,20 @@
 FROM haskell:9.6 AS builder
 
 RUN apt-get update && apt-get install -y \
+    build-essential \
     pkg-config \
     zlib1g-dev \
     libgmp-dev \
+    postgresql-client-15 \
     libpq-dev \
-    build-essential \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /src
+
 COPY . .
 
 RUN cabal update
+
 RUN cabal build exe:server exe:migrate
 
 RUN cp dist-newstyle/build/*/ghc-*/server-*/x/server/build/server/server /tmp/server
