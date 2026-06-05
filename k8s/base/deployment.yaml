@@ -22,8 +22,8 @@ spec:
           ports:
             - containerPort: 80
           envFrom:
-            configMapKeyRef:
-              name: app-config
+            - configMapKeyRef:
+                name: app-config
           resources:
             requests:
               cpu: "50m"
