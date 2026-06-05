@@ -9,6 +9,6 @@ spec:
       containers:
         - name: server
           envFrom:
-            - configMapKeyRef:
+            - configMapRef:
                 name: app-config
 

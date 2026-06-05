@@ -22,7 +22,7 @@ spec:
           ports:
             - containerPort: 80
           envFrom:
-            - configMapKeyRef:
+            - configMapRef:
                 name: app-config
           resources:
             requests:
