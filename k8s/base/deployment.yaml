@@ -19,15 +19,14 @@ spec:
       containers:
         - name: server
           image: ghcr.io/lootopia-org/Server:latest
-          volumeMounts:
-            - name: env-file
-              mountPath: /app/.env
-              subPath: .env
           ports:
             - containerPort: 80
           env:
             - name: ENV
-              value: "base"
+              valueFrom:
+                configMapKeyRef:
+                  name: app-config
+                  key: env          
           resources:
             requests:
               cpu: "50m"
