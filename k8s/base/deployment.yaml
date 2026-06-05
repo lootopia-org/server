@@ -17,7 +17,7 @@ spec:
       imagePullSecrets:
         - name: ghcr-secret
       containers:
-        - name: core
+        - name: server
           image: ghcr.io/lootopia-org/Server:latest
           volumeMounts:
             - name: env-file
