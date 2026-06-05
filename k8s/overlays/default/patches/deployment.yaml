@@ -8,10 +8,7 @@ spec:
     spec:
       containers:
         - name: server
-          env:
-            - name: ENV
-              valueFrom:
-                configMapKeyRef:
-                  name: app-config
-                  key: env
+          envFrom:
+            configMapKeyRef:
+              name: app-config
 
