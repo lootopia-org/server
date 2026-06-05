@@ -1,4 +1,0 @@
-packages: .
-
--- Pin nothing else; the solver targets the system GHC (9.6.x).
--- Run `cabal freeze` if you want a reproducible install plan.
