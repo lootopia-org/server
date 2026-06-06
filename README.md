@@ -1,4 +1,4 @@
-# rust-auth-server
+# server
 
 A small, batteries-included **authentication server in Rust**, built to be easy
 to read, run, and extend. It implements modern multi-factor authentication:

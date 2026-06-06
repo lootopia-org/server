@@ -36,7 +36,7 @@ pub async fn run() -> anyhow::Result<()> {
         .await
         .with_context(|| format!("binding to {addr}"))?;
 
-    println!("rust-auth-server listening on http://localhost:{port}");
+    println!("Listening on http://localhost:{port}");
     axum::serve(listener, app)
         .await
         .context("running HTTP server")

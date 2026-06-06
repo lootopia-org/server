@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# End-to-end smoke test for rust-auth-server, driven entirely over HTTP.
+# End-to-end smoke test for lootopia backend server, driven entirely over HTTP.
 #
 # Covers: registration, duplicate-registration, email verification, password
 # login, /me, TOTP enrollment, the full MFA second-factor login, WebAuthn
