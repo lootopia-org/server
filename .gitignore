@@ -1,8 +1,8 @@
-dist-newstyle/
-.ghc.environment.*
-*.hi
-*.o
+# Rust
+/target/
+
+# Secrets / local config
 .env
-*.tix
-.HTF/
-.stack-work/
+
+# Test artifacts
+tests/server.log

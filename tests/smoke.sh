@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# End-to-end smoke test for haskell-auth-server, driven entirely over HTTP.
+# End-to-end smoke test for rust-auth-server, driven entirely over HTTP.
 #
 # Covers: registration, duplicate-registration, email verification, password
 # login, /me, TOTP enrollment, the full MFA second-factor login, WebAuthn
@@ -9,8 +9,8 @@
 # Requirements: curl and python3 (used for JSON parsing and TOTP codes).
 #
 # Usage:
-#   cabal run auth-migrate
-#   cabal run haskell-auth-server > tests/server.log 2>&1 &
+#   cargo run --bin migrate
+#   cargo run --bin server > tests/server.log 2>&1 &
 #   LOG_FILE=tests/server.log tests/smoke.sh
 #
 # Environment overrides:

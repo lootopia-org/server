@@ -1,0 +1,48 @@
+[package]
+name = "server"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.88"
+description = "lootopia backend server"
+license = "MIT"
+
+[lib]
+name = "server"
+path = "src/lib.rs"
+
+[[bin]]
+name = "server"
+path = "src/main.rs"
+
+[[bin]]
+name = "migrate"
+path = "src/bin/migrate.rs"
+
+[dependencies]
+anyhow = "1.0.102"
+axum = "0.8.9"
+base32 = "0.5.1"
+base64 = "0.22.1"
+chrono = { version = "0.4.45", features = ["serde"] }
+hmac = "0.12.1"
+lettre = { version = "0.11.19", default-features = false, features = ["smtp-transport", "builder", "tokio1-rustls-tls", "tokio1"] }
+pbkdf2 = "0.12.2"
+rand = "0.9.4"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.150"
+sha1 = "0.10.6"
+sha2 = "0.10.9"
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio-rustls", "postgres", "chrono", "uuid", "json", "macros", "migrate"] }
+subtle = "2.6.1"
+thiserror = "2.0.18"
+tokio = { version = "1.52.3", features = ["full"] }
+tower = "0.5.3"
+tower-http = { version = "0.6.11", features = ["cors", "trace"] }
+tracing = "0.1.44"
+tracing-subscriber = { version = "0.3.23", features = ["env-filter"] }
+url = "2.5.8"
+uuid = { version = "1.20.0", features = ["v4", "serde"] }
+webauthn-rs = { version = "0.5.0", features = ["danger-allow-state-serialisation"] }
+
+[profile.release]
+opt-level = 2

@@ -1,6 +1,6 @@
-# haskell-auth-server
+# rust-auth-server
 
-A small, batteries-included **authentication server in Haskell**, built to be easy
+A small, batteries-included **authentication server in Rust**, built to be easy
 to read, run, and extend. It implements modern multi-factor authentication:
 
 - **Email + password** — PBKDF2-HMAC-SHA256 with a per-user **salt** (in the DB)
@@ -13,10 +13,10 @@ to read, run, and extend. It implements modern multi-factor authentication:
 - **MFA orchestration** — password is the first factor; TOTP is a second factor;
   a passkey is treated as strong (phishing-resistant) auth on its own.
 
-The stack: [Servant](https://www.servant.dev/) (type-safe HTTP),
-[Persistent](https://www.yesodweb.com/book/persistent) (ORM + automatic
-migrations) on **PostgreSQL**, [`crypton`](https://hackage.haskell.org/package/crypton)
-for crypto, and [`webauthn`](https://hackage.haskell.org/package/webauthn) for FIDO2.
+The stack: [axum](https://github.com/tokio-rs/axum) (HTTP),
+[SQLx](https://github.com/launchbadge/sqlx) (async, compile-time-checked SQL +
+migrations) on **PostgreSQL**, [`pbkdf2`/`hmac`/`sha2`](https://github.com/RustCrypto)
+for crypto, and [`webauthn-rs`](https://github.com/kanidm/webauthn-rs) for FIDO2.
 
 ---
 
@@ -30,17 +30,17 @@ docker compose up -d db
 cp .env.example .env
 #   For real use, set a strong PASSWORD_PEPPER (openssl rand -hex 32).
 
-# 3. Apply database migrations (separate tool, run once / on schema change)
-cabal run auth-migrate
+# 3. Apply database migrations (separate binary, run once / on schema change)
+cargo run --bin migrate
 
 # 4. Run the server
-cabal run haskell-auth-server
-# -> haskell-auth-server listening on http://localhost:8080
+cargo run --bin server
+# -> rust-auth-server listening on http://localhost:8080
 ```
 
 Migrations are deliberately **not** run at server start-up, so booting extra
-instances never races to alter tables. Re-run `cabal run auth-migrate` whenever
-you change `Auth/Models.hs`.
+instances never races to alter tables. Re-run `cargo run --bin migrate` whenever
+you change the schema in `migrations/`.
 
 ### Tests
 
@@ -49,10 +49,13 @@ TOTP MFA → passkey options → logout). It needs `python3` (for JSON parsing a
 generating TOTP codes):
 
 ```bash
-cabal run auth-migrate
-cabal run haskell-auth-server > tests/server.log 2>&1 &   # log lets the test read the email link
+cargo run --bin migrate
+cargo run --bin server > tests/server.log 2>&1 &   # log lets the test read the email link
 LOG_FILE=tests/server.log tests/smoke.sh
 ```
+
+There is also a convenience wrapper, `tests/run_smoke.sh`, which boots the
+server (in dev-email mode) and runs the smoke test against it, then tears down.
 
 With no `SMTP_HOST` configured, verification emails are printed to the server's
 stdout, so local development needs no mail server.
@@ -62,33 +65,38 @@ stdout, so local development needs no mail server.
 ## Project layout
 
 ```
-app/Main.hs              server entry point
-tools/Migrate.hs         standalone migration tool (auth-migrate)
-tests/smoke.sh           end-to-end curl test of the whole API
-src/Auth/
-  Config.hs              configuration loaded from env / .env
-  Types.hs               AppEnv + the AppM monad (ReaderT AppEnv Handler), runDB
-  Models.hs              the entire DB schema (Persistent) + migrateAll
-  Database.hs            connection pool + run migrations
-  Crypto/
-    Password.hs          PBKDF2 + salt + pepper
-    Totp.hs              RFC 6238 TOTP
-    Token.hs             CSPRNG URL-safe tokens
-    Base32.hs            tiny RFC 4648 Base32 (for TOTP secrets)
-  Email.hs               sending verification mail (dev mode = stdout)
-  Session.hs             session tokens + the AuthProtect handler
-  Webauthn.hs            FIDO2 registration & authentication ceremonies
-  Api.hs                 the Servant API type, JSON DTOs, handlers, WAI app
-  Server.hs              boot: config -> pool -> migrate -> warp
+src/
+  main.rs               server entry point (the `server` binary)
+  lib.rs                crate root: wires the top-level modules together
+  server.rs             boot: config -> pool -> webauthn -> axum (GLOBAL)
+  routes.rs             the HTTP API: DTOs, handlers, the router (GLOBAL)
+  bin/migrate.rs        standalone migration tool (the `migrate` binary)
+  auth/
+    config.rs           configuration loaded from env / .env
+    state.rs            AppState shared with every handler (pool, config, webauthn)
+    error.rs            ApiError -> HTTP response mapping
+    models.rs           database row types
+    db.rs               connection pool + migrations runner
+    crypto/
+      password.rs       PBKDF2 + salt + pepper
+      totp.rs           RFC 6238 TOTP (+ RFC 4226 HOTP), Base32 secrets
+      token.rs          CSPRNG URL-safe tokens
+    email.rs            sending verification mail (dev mode = stdout)
+    session.rs          session tokens + the `AuthedUser` request extractor
+    webauthn.rs         FIDO2 registration & authentication ceremonies
+migrations/             SQL schema (embedded into the binary at build time)
+tests/smoke.sh          end-to-end curl test of the whole API
 ```
+
+`server.rs` and `routes.rs` live at the crate root — deliberately outside the
+`auth` module — so the HTTP wiring stays decoupled from the individual auth
+building blocks it composes.
 
 ### How to add an endpoint
 
-1. Add a route to the `API` (or `ProtectedAPI`) type in `Auth/Api.hs`.
-2. Add a handler of the matching type and wire it into `server` / `protectedServer`.
-
-That's it — the type checker tells you if the handler doesn't match the route.
-Protected routes get an `AuthedUser` automatically via `AuthProtect "session"`.
+1. Add a request handler in `src/routes.rs`.
+2. Register it on the router in `routes::router`. Protected routes simply take an
+   `AuthedUser` argument and the extractor enforces a fully-MFA'd session.
 
 ---
 
@@ -138,9 +146,8 @@ POST /auth/webauthn/login/complete {handle, credential}  ->  {token} (fully auth
 ```
 
 The `credential` field in the WebAuthn `complete` calls is the JSON produced by
-[`webauthn-json`](https://github.com/github/webauthn-json)'s `create()` /
-`get()` in the browser; the `begin` calls return the matching `publicKey`
-options to feed into it.
+the browser's `navigator.credentials.create()` / `.get()`; the `begin` calls
+return the matching `publicKey` options to feed into it.
 
 ---
 
@@ -152,8 +159,8 @@ options to feed into it.
 - **PBKDF2 iterations**: defaults to 200k; raise it on faster hardware.
 - **Sessions** are opaque random tokens stored server-side, so they can be
   revoked instantly (logout deletes the row). A session created after the
-  password step is marked `mfaPending` and cannot reach protected routes until a
-  second factor succeeds.
+  password step is marked `mfa_pending` and cannot reach protected routes until
+  a second factor succeeds.
 - **WebAuthn** challenges are single-use and time-limited (`CEREMONY_TTL_SECONDS`),
   and the signature counter is checked to detect cloned authenticators.
 - For production, terminate TLS in front of the server (passkeys require a
@@ -163,5 +170,7 @@ options to feed into it.
 
 ## Requirements
 
-- GHC 9.6.x and cabal (tested with GHC 9.6.7 / cabal 3.14).
+- Rust 1.88+ (tested with 1.95) and Cargo.
 - PostgreSQL 13+ (the included `docker-compose.yml` provides one).
+- A system OpenSSL (`libssl-dev` / `openssl`) is needed at build time for the
+  WebAuthn dependency.
