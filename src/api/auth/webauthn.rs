@@ -3,10 +3,13 @@ use chrono::Duration;
 use serde_json::{json, Value};
 use webauthn_rs::prelude::*;
 
+use uuid::Uuid;
+
 use crate::auth::crypto::token::random_token;
 use crate::auth::models::{AuthCeremony, Credential, User};
 use crate::config::Config;
 use crate::error::ApiError;
+use crate::{query_create, query_delete, query_get, query_update};
 use crate::state::AppState;
 use crate::utils::contants::NOW;
 
@@ -59,10 +62,7 @@ pub async fn complete_registration(
     let cred_id = passkey.cred_id().as_ref().to_vec();
 
     if let Some(existing) =
-        sqlx::query_as::<_, Credential>("SELECT * FROM credentials WHERE credential_id = $1")
-            .bind(&cred_id)
-            .fetch_optional(&state.pool)
-            .await?
+        query_get!(&state.pool, Credential, "credentials", "credential_id", &cred_id)
     {
         if existing.user_id != user.id {
             return Err(ApiError::bad_request(
@@ -89,10 +89,7 @@ pub async fn complete_registration(
 }
 
 pub async fn begin_authentication(state: &AppState, email: &str) -> Result<Value, ApiError> {
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
-        .bind(email)
-        .fetch_optional(&state.pool)
-        .await?
+    let user = query_get!(&state.pool, User, "users", "email", email)
         .ok_or_else(|| ApiError::not_found("no such user"))?;
 
     let passkeys = load_passkeys(state, user.id).await?;
@@ -133,19 +130,19 @@ pub async fn complete_authentication(
     if result.needs_update() {
         let cred_id = result.cred_id().as_ref().to_vec();
         if let Some(row) =
-            sqlx::query_as::<_, Credential>("SELECT * FROM credentials WHERE credential_id = $1")
-                .bind(&cred_id)
-                .fetch_optional(&state.pool)
-                .await?
+            query_get!(&state.pool, Credential, "credentials", "credential_id", &cred_id)
         {
             let mut passkey: Passkey = serde_json::from_value(row.passkey).map_err(internal)?;
             if passkey.update_credential(&result) == Some(true) {
                 let passkey_json = serde_json::to_value(&passkey).map_err(internal)?;
-                sqlx::query("UPDATE credentials SET passkey = $1 WHERE id = $2")
-                    .bind(&passkey_json)
-                    .bind(row.id)
-                    .execute(&state.pool)
-                    .await?;
+                query_update!(
+                    &state.pool,
+                    Credential,
+                    "credentials",
+                    "id",
+                    row.id,
+                    "passkey" => Some(&passkey_json)
+                );
             }
         }
     }
@@ -191,17 +188,13 @@ async fn store_ceremony(
 ) -> Result<String, ApiError> {
     let handle = random_token(24);
     let expires = *NOW + Duration::seconds(state.config.ceremony_ttl_seconds);
-    sqlx::query(
-        "INSERT INTO auth_ceremonies (handle, purpose, state, user_id, expires_at) \
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(&handle)
-    .bind(purpose)
-    .bind(&ceremony_state)
-    .bind(user_id)
-    .bind(expires)
-    .execute(&state.pool)
-    .await?;
+    query_create!(&state.pool, "auth_ceremonies",
+        "handle" => &handle,
+        "purpose" => purpose,
+        "state" => &ceremony_state,
+        "user_id" => user_id,
+        "expires_at" => expires
+    );
     Ok(handle)
 }
 
@@ -210,18 +203,11 @@ async fn load_ceremony(
     purpose: &str,
     handle: &str,
 ) -> Result<AuthCeremony, ApiError> {
-    let ceremony =
-        sqlx::query_as::<_, AuthCeremony>("SELECT * FROM auth_ceremonies WHERE handle = $1")
-            .bind(handle)
-            .fetch_optional(&state.pool)
-            .await?;
+    let ceremony = query_get!(&state.pool, AuthCeremony, "auth_ceremonies", "handle", handle);
 
     match ceremony {
         Some(c) if c.purpose == purpose && c.expires_at >= *NOW => {
-            sqlx::query("DELETE FROM auth_ceremonies WHERE id = $1")
-                .bind(c.id)
-                .execute(&state.pool)
-                .await?;
+            query_delete!(&state.pool, "auth_ceremonies", "id", c.id);
             Ok(c)
         }
         _ => Err(ApiError::bad_request("unknown or expired ceremony")),

@@ -8,6 +8,7 @@ use crate::auth::crypto::jwt::{self, Claims};
 use crate::auth::crypto::token::random_token;
 use crate::auth::models::{RequiredRole, Role, RoleAdmin, RolePartner, RoleUser, Session, User};
 use crate::error::ApiError;
+use crate::{query_create, query_get, query_scale};
 use crate::state::AppState;
 use crate::utils::contants::{NOW, SESSION_MAX_AGE};
 
@@ -26,23 +27,20 @@ pub async fn create_session(
     mfa_pending: bool,
 ) -> Result<String, ApiError> {
     let token = random_token(32);
-    sqlx::query(
-        "INSERT INTO sessions (user_id, token, mfa_pending, expires_at, created_at) \
-         VALUES ($1, $2, $3, $4, $5)",
-    )
-    .bind(user_id)
-    .bind(&token)
-    .bind(mfa_pending)
-    .bind(SESSION_MAX_AGE)
-    .bind(*NOW)
-    .execute(&state.pool)
-    .await?;
+    query_create!(&state.pool, "sessions",
+        "user_id" => user_id,
+        "token" => &token,
+        "mfa_pending" => mfa_pending,
+        "expires_at" => SESSION_MAX_AGE,
+        "created_at" => *NOW
+    );
 
-    let role = sqlx::query_scalar::<_, Option<String>>("SELECT role FROM users WHERE id = $1")
-        .bind(user_id)
-        .fetch_one(&state.pool)
-        .await?
-        .unwrap_or_else(|| "player".to_string());
+    let role: Option<String> = query_scale!(
+        &state.pool,
+        "SELECT role FROM users WHERE id = $1",
+        user_id
+    );
+    let role = role.unwrap_or_else(|| "player".to_string());
 
     let claims = Claims {
         sub: user_id,
@@ -63,20 +61,13 @@ pub async fn lookup_valid_session(
     state: &AppState,
     token: &str,
 ) -> Result<Option<(Session, User)>, ApiError> {
-    let Some(session) = sqlx::query_as::<_, Session>("SELECT * FROM sessions WHERE token = $1")
-        .bind(token)
-        .fetch_optional(&state.pool)
-        .await?
-    else {
+    let Some(session) = query_get!(&state.pool, Session, "sessions", "token", token) else {
         return Ok(None);
     };
     if session.expires_at < *NOW {
         return Ok(None);
     }
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-        .bind(session.user_id)
-        .fetch_optional(&state.pool)
-        .await?;
+    let user = query_get!(&state.pool, User, "users", "id", session.user_id);
     Ok(user.map(|u| (session, u)))
 }
 

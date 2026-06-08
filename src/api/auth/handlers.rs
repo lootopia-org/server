@@ -21,11 +21,12 @@ use crate::{
             VerifyEmailParams, WebauthnCompleteReq,
         },
         email,
-        models::User,
+        models::{Credential, EmailToken, PasswordResetToken, Session, User},
         session::{create_session, session_token_from_jwt, AuthedUser},
         webauthn,
     },
     error::{ApiError, ApiResult},
+    query_create, query_delete, query_get, query_scale, query_update,
     state::AppState,
     utils::{
         contants::{NOW, SESSION_MAX_AGE},
@@ -37,11 +38,12 @@ pub async fn register(
     State(state): State<AppState>,
     Json(req): Json<RegisterReq>,
 ) -> ApiResult<Json<MessageResp>> {
-    let existing = sqlx::query_scalar::<_, Uuid>("SELECT id FROM users WHERE email = $1")
-        .bind(&req.email)
-        .fetch_optional(&state.pool)
-        .await?;
-    if existing.is_some() {
+    let existing: bool = query_scale!(
+        &state.pool,
+        "SELECT EXISTS(SELECT 1 FROM users WHERE email = $1)",
+        &req.email
+    );
+    if existing {
         return Err(ApiError::conflict("email already registered"));
     }
     if req.password.is_empty() {
@@ -50,24 +52,22 @@ pub async fn register(
 
     let stored = password::hash_new_password(&state.config.password_params(), &req.password);
 
-    let user_id = sqlx::query_scalar::<_, Uuid>(
-        "INSERT INTO users \
-         (username, email, email_verified, password_salt, password_hash, role, \
-          totp_secret, totp_enabled, avatar, bio, created_at, updated_at) \
-         VALUES ($1, $2, false, $3, $4, $5, user, NULL, false, $6, $7, &8, $9) RETURNING id",
-    )
-    .bind(&req.username)
-    .bind(&req.email)
-    .bind(&stored.salt)
-    .bind(&stored.hash)
-    .bind(&req.avatar)
-    .bind(&req.bio)
-    .bind(*NOW)
-    .bind(*NOW)
-    .fetch_one(&state.pool)
-    .await?;
+    let user = query_create!(&state.pool, User, "users",
+        "username" => &req.username,
+        "email" => &req.email,
+        "email_verified" => false,
+        "password_salt" => &stored.salt,
+        "password_hash" => &stored.hash,
+        "role" => "player",
+        "totp_secret" => None::<Vec<u8>>,
+        "totp_enabled" => false,
+        "avatar" => &req.avatar,
+        "bio" => &req.bio,
+        "created_at" => *NOW,
+        "updated_at" => *NOW
+    );
 
-    issue_verification(&state, user_id, &req.email).await?;
+    issue_verification(&state, user.id, &req.email).await?;
     Ok(message(
         "registered; check your email to verify your address",
     ))
@@ -77,16 +77,12 @@ pub async fn issue_verification(state: &AppState, user_id: Uuid, email: &str) ->
     let token = random_token(32);
     let expires = *NOW + Duration::seconds(state.config.email_verify_ttl_seconds);
 
-    sqlx::query("DELETE FROM email_tokens WHERE user_id = $1")
-        .bind(user_id)
-        .execute(&state.pool)
-        .await?;
-    sqlx::query("INSERT INTO email_tokens (user_id, token, expires_at) VALUES ($1, $2, $3)")
-        .bind(user_id)
-        .bind(&token)
-        .bind(expires)
-        .execute(&state.pool)
-        .await?;
+    query_delete!(&state.pool, "email_tokens", "user_id", user_id);
+    query_create!(&state.pool, "email_tokens",
+        "user_id" => user_id,
+        "token" => &token,
+        "expires_at" => expires
+    );
 
     let link = format!(
         "{}/auth/verify-email?token={}",
@@ -104,23 +100,19 @@ pub async fn verify_email(
         .token
         .ok_or_else(|| ApiError::bad_request("missing token"))?;
 
-    let row = sqlx::query_as::<_, crate::auth::models::EmailToken>(
-        "SELECT * FROM email_tokens WHERE token = $1",
-    )
-    .bind(&token)
-    .fetch_optional(&state.pool)
-    .await?;
+    let row = query_get!(&state.pool, EmailToken, "email_tokens", "token", &token);
 
     match row {
         Some(et) if et.expires_at >= *NOW => {
-            sqlx::query("UPDATE users SET email_verified = true WHERE id = $1")
-                .bind(et.user_id)
-                .execute(&state.pool)
-                .await?;
-            sqlx::query("DELETE FROM email_tokens WHERE id = $1")
-                .bind(et.id)
-                .execute(&state.pool)
-                .await?;
+            query_update!(
+                &state.pool,
+                User,
+                "users",
+                "id",
+                et.user_id,
+                "email_verified" => Some(true)
+            );
+            query_delete!(&state.pool, "email_tokens", "id", et.id);
             Ok(message("email verified"))
         }
         _ => Err(ApiError::bad_request("invalid or expired token")),
@@ -205,19 +197,12 @@ pub async fn forgot_password(
     let token_hash = token::sha256(token.as_bytes());
     let expires = *NOW + Duration::seconds(SESSION_MAX_AGE);
 
-    sqlx::query("DELETE FROM password_reset_tokens WHERE user_id = $1")
-        .bind(user.id)
-        .execute(&state.pool)
-        .await?;
-    sqlx::query(
-        "INSERT INTO password_reset_tokens (user_id, token_hash, expires_at) \
-         VALUES ($1, $2, $3)",
-    )
-    .bind(user.id)
-    .bind(&token_hash)
-    .bind(expires)
-    .execute(&state.pool)
-    .await?;
+    query_delete!(&state.pool, "password_reset_tokens", "user_id", user.id);
+    query_create!(&state.pool, "password_reset_tokens",
+        "user_id" => user.id,
+        "token_hash" => &token_hash,
+        "expires_at" => expires
+    );
 
     let link = format!(
         "{}/auth/reset-password?token={}",
@@ -239,20 +224,18 @@ pub async fn reset_password(
     let token_hash = token::sha256(req.token.as_bytes());
     let invalid = || ApiError::bad_request("invalid or expired token");
 
-    let row = sqlx::query_as::<_, crate::auth::models::PasswordResetToken>(
-        "SELECT * FROM password_reset_tokens WHERE token_hash = $1",
-    )
-    .bind(&token_hash)
-    .fetch_optional(&state.pool)
-    .await?;
+    let row = query_get!(
+        &state.pool,
+        PasswordResetToken,
+        "password_reset_tokens",
+        "token_hash",
+        &token_hash
+    );
 
     let reset = match row {
         Some(r) if r.expires_at >= *NOW => r,
         Some(r) => {
-            sqlx::query("DELETE FROM password_reset_tokens WHERE id = $1")
-                .bind(r.id)
-                .execute(&state.pool)
-                .await?;
+            query_delete!(&state.pool, "password_reset_tokens", "id", r.id);
             return Err(invalid());
         }
         None => return Err(invalid()),
@@ -261,23 +244,18 @@ pub async fn reset_password(
     let stored = password::hash_new_password(&state.config.password_params(), &req.new_password);
 
     let mut tx = state.pool.begin().await?;
-    sqlx::query(
-        "UPDATE users SET password_salt = $1, password_hash = $2, updated_at = $3 WHERE id = $4",
-    )
-    .bind(&stored.salt)
-    .bind(&stored.hash)
-    .bind(*NOW)
-    .bind(reset.user_id)
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query("DELETE FROM password_reset_tokens WHERE user_id = $1")
-        .bind(reset.user_id)
-        .execute(&mut *tx)
-        .await?;
-    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
-        .bind(reset.user_id)
-        .execute(&mut *tx)
-        .await?;
+    query_update!(
+        &mut *tx,
+        User,
+        "users",
+        "id",
+        reset.user_id,
+        "password_salt" => Some(&stored.salt),
+        "password_hash" => Some(&stored.hash),
+        "updated_at" => Some(*NOW)
+    );
+    query_delete!(&mut *tx, "password_reset_tokens", "user_id", reset.user_id);
+    query_delete!(&mut *tx, "sessions", "user_id", reset.user_id);
     tx.commit().await?;
 
     Ok(message("your password has been reset; please log in again"))
@@ -288,22 +266,14 @@ pub async fn mfa_totp(
     Json(req): Json<MfaTotpReq>,
 ) -> ApiResult<Json<TokenResp>> {
     let session_token = session_token_from_jwt(&state, &req.token)?;
-    let session = sqlx::query_as::<_, crate::auth::models::Session>(
-        "SELECT * FROM sessions WHERE token = $1",
-    )
-    .bind(&session_token)
-    .fetch_optional(&state.pool)
-    .await?;
+    let session = query_get!(&state.pool, Session, "sessions", "token", &session_token);
 
     let session = match session {
         Some(s) if s.expires_at >= *NOW => s,
         _ => return Err(ApiError::unauthorized("invalid or expired session")),
     };
 
-    let user = sqlx::query_as::<_, User>("SELECT * FROM users WHERE id = $1")
-        .bind(session.user_id)
-        .fetch_optional(&state.pool)
-        .await?;
+    let user = query_get!(&state.pool, User, "users", "id", session.user_id);
 
     let secret = user
         .and_then(|u| u.totp_secret)
@@ -313,10 +283,14 @@ pub async fn mfa_totp(
         return Err(ApiError::unauthorized("invalid code"));
     }
 
-    sqlx::query("UPDATE sessions SET mfa_pending = false WHERE id = $1")
-        .bind(session.id)
-        .execute(&state.pool)
-        .await?;
+    query_update!(
+        &state.pool,
+        Session,
+        "sessions",
+        "id",
+        session.id,
+        "mfa_pending" => Some(false)
+    );
 
     Ok(Json(TokenResp { token: req.token }))
 }
@@ -354,10 +328,7 @@ pub async fn logout(
     State(state): State<AppState>,
     auth: AuthedUser,
 ) -> ApiResult<Json<MessageResp>> {
-    sqlx::query("DELETE FROM sessions WHERE user_id = $1")
-        .bind(auth.user.id)
-        .execute(&state.pool)
-        .await?;
+    query_delete!(&state.pool, "sessions", "user_id", auth.user.id);
     Ok(message("logged out"))
 }
 
@@ -366,11 +337,15 @@ pub async fn totp_enroll_begin(
     auth: AuthedUser,
 ) -> ApiResult<Json<TotpEnrollResp>> {
     let secret = totp::generate_secret();
-    sqlx::query("UPDATE users SET totp_secret = $1, totp_enabled = false WHERE id = $2")
-        .bind(&secret)
-        .bind(auth.user.id)
-        .execute(&state.pool)
-        .await?;
+    query_update!(
+        &state.pool,
+        User,
+        "users",
+        "id",
+        auth.user.id,
+        "totp_secret" => Some(&secret),
+        "totp_enabled" => Some(false)
+    );
 
     Ok(Json(TotpEnrollResp {
         secret: totp::secret_to_base32(&secret),
@@ -391,10 +366,14 @@ pub async fn totp_enroll_verify(
     if !totp::verify_code(secret, &req.code) {
         return Err(ApiError::unauthorized("invalid code"));
     }
-    sqlx::query("UPDATE users SET totp_enabled = true WHERE id = $1")
-        .bind(auth.user.id)
-        .execute(&state.pool)
-        .await?;
+    query_update!(
+        &state.pool,
+        User,
+        "users",
+        "id",
+        auth.user.id,
+        "totp_enabled" => Some(true)
+    );
     Ok(message("TOTP enabled"))
 }
 
@@ -411,10 +390,15 @@ pub async fn totp_disable(
     if !totp::verify_code(secret, &req.code) {
         return Err(ApiError::unauthorized("invalid code"));
     }
-    sqlx::query("UPDATE users SET totp_enabled = false, totp_secret = NULL WHERE id = $1")
-        .bind(auth.user.id)
-        .execute(&state.pool)
-        .await?;
+    query_update!(
+        &state.pool,
+        User,
+        "users",
+        "id",
+        auth.user.id,
+        "totp_enabled" => Some(false),
+        "totp_secret" => Some(None::<Vec<u8>>)
+    );
     Ok(message("TOTP disabled"))
 }
 
@@ -439,7 +423,7 @@ pub async fn credentials(
     State(state): State<AppState>,
     auth: AuthedUser,
 ) -> ApiResult<Json<Vec<CredentialResp>>> {
-    let rows = sqlx::query_as::<_, crate::auth::models::Credential>(
+    let rows = sqlx::query_as::<_, Credential>(
         "SELECT * FROM credentials WHERE user_id = $1 ORDER BY id",
     )
     .bind(auth.user.id)
@@ -456,31 +440,20 @@ pub async fn credentials(
 }
 
 async fn find_user_by_email(state: &AppState, email: Option<&str>) -> ApiResult<Option<User>> {
-    Ok(
-        sqlx::query_as::<_, User>("SELECT * FROM users WHERE email = $1")
-            .bind(email)
-            .fetch_optional(&state.pool)
-            .await?,
-    )
+    Ok(query_get!(&state.pool, User, "users", "email", email))
 }
 
 async fn find_user_by_username(
     state: &AppState,
     username: Option<&str>,
 ) -> ApiResult<Option<User>> {
-    Ok(
-        sqlx::query_as::<_, User>("SELECT * FROM users WHERE username = $1")
-            .bind(username)
-            .fetch_optional(&state.pool)
-            .await?,
-    )
+    Ok(query_get!(&state.pool, User, "users", "username", username))
 }
 
 async fn count_passkeys(state: &AppState, user_id: Uuid) -> ApiResult<i64> {
-    Ok(
-        sqlx::query_scalar::<_, i64>("SELECT COUNT(*) FROM credentials WHERE user_id = $1")
-            .bind(user_id)
-            .fetch_one(&state.pool)
-            .await?,
-    )
+    Ok(query_scale!(
+        &state.pool,
+        "SELECT COUNT(*) FROM credentials WHERE user_id = $1",
+        user_id
+    ))
 }
