@@ -1,5 +1,5 @@
-use server::auth::db;
 use server::config::{load_config, load_dotenv};
+use server::utils::db;
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {

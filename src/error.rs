@@ -60,4 +60,17 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
+impl From<crate::auth::crypto::jwt::JwtError> for ApiError {
+    fn from(err: crate::auth::crypto::jwt::JwtError) -> Self {
+        use crate::auth::crypto::jwt::JwtError;
+        match err {
+            JwtError::Crypto => {
+                tracing::error!("jwt crypto failure");
+                ApiError::internal("internal server error")
+            }
+            _ => ApiError::unauthorized("invalid or expired token"),
+        }
+    }
+}
+
 pub type ApiResult<T> = Result<T, ApiError>;

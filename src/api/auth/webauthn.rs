@@ -1,13 +1,14 @@
 use anyhow::Context;
-use chrono::{Duration, Utc};
+use chrono::Duration;
 use serde_json::{json, Value};
 use webauthn_rs::prelude::*;
 
-use crate::config::Config;
 use crate::auth::crypto::token::random_token;
-use crate::auth::error::ApiError;
 use crate::auth::models::{AuthCeremony, Credential, User};
-use crate::auth::state::AppState;
+use crate::config::Config;
+use crate::error::ApiError;
+use crate::state::AppState;
+use crate::utils::contants::NOW;
 
 pub fn build(config: &Config) -> anyhow::Result<Webauthn> {
     let rp_origin = Url::parse(&config.origin).context("parsing ORIGIN as a URL")?;
@@ -29,12 +30,7 @@ pub async fn begin_registration(state: &AppState, user: &User) -> Result<Value, 
 
     let (ccr, reg_state) = state
         .webauthn
-        .start_passkey_registration(
-            user_unique_id,
-            &user.email,
-            &user.email,
-            Some(exclude),
-        )
+        .start_passkey_registration(user_unique_id, &user.email, &user.email, Some(exclude))
         .map_err(|e| ApiError::bad_request(format!("could not start registration: {e}")))?;
 
     let state_json = serde_json::to_value(&reg_state).map_err(internal)?;
@@ -76,7 +72,6 @@ pub async fn complete_registration(
     }
 
     let passkey_json = serde_json::to_value(&passkey).map_err(internal)?;
-    let now = Utc::now();
     sqlx::query(
         "INSERT INTO credentials (user_id, credential_id, passkey, created_at) \
          VALUES ($1, $2, $3, $4) \
@@ -86,7 +81,7 @@ pub async fn complete_registration(
     .bind(user.id)
     .bind(&cred_id)
     .bind(&passkey_json)
-    .bind(now)
+    .bind(*NOW)
     .execute(&state.pool)
     .await?;
 
@@ -120,7 +115,7 @@ pub async fn complete_authentication(
     state: &AppState,
     handle: &str,
     credential_json: &Value,
-) -> Result<i64, ApiError> {
+) -> Result<Uuid, ApiError> {
     let ceremony = load_ceremony(state, "authenticate", handle).await?;
     let user_id = ceremony
         .user_id
@@ -159,8 +154,7 @@ pub async fn complete_authentication(
 }
 
 fn user_uuid(user: &User) -> Result<Uuid, ApiError> {
-    Uuid::from_slice(&user.user_handle)
-        .map_err(|_| ApiError::internal("stored user handle is not a valid id"))
+    Ok(user.id)
 }
 
 fn public_key_response<T: serde::Serialize>(
@@ -168,14 +162,11 @@ fn public_key_response<T: serde::Serialize>(
     challenge: &T,
 ) -> serde_json::Result<Value> {
     let value = serde_json::to_value(challenge)?;
-    let public_key = value
-        .get("publicKey")
-        .cloned()
-        .unwrap_or(value);
+    let public_key = value.get("publicKey").cloned().unwrap_or(value);
     Ok(json!({ "handle": handle, "publicKey": public_key }))
 }
 
-async fn load_credentials(state: &AppState, user_id: i64) -> Result<Vec<Credential>, ApiError> {
+async fn load_credentials(state: &AppState, user_id: Uuid) -> Result<Vec<Credential>, ApiError> {
     Ok(
         sqlx::query_as::<_, Credential>("SELECT * FROM credentials WHERE user_id = $1")
             .bind(user_id)
@@ -184,7 +175,7 @@ async fn load_credentials(state: &AppState, user_id: i64) -> Result<Vec<Credenti
     )
 }
 
-async fn load_passkeys(state: &AppState, user_id: i64) -> Result<Vec<Passkey>, ApiError> {
+async fn load_passkeys(state: &AppState, user_id: Uuid) -> Result<Vec<Passkey>, ApiError> {
     let mut passkeys = Vec::new();
     for cred in load_credentials(state, user_id).await? {
         passkeys.push(serde_json::from_value(cred.passkey).map_err(internal)?);
@@ -195,11 +186,11 @@ async fn load_passkeys(state: &AppState, user_id: i64) -> Result<Vec<Passkey>, A
 async fn store_ceremony(
     state: &AppState,
     purpose: &str,
-    user_id: Option<i64>,
+    user_id: Option<Uuid>,
     ceremony_state: Value,
 ) -> Result<String, ApiError> {
     let handle = random_token(24);
-    let expires = Utc::now() + Duration::seconds(state.config.ceremony_ttl_seconds);
+    let expires = *NOW + Duration::seconds(state.config.ceremony_ttl_seconds);
     sqlx::query(
         "INSERT INTO auth_ceremonies (handle, purpose, state, user_id, expires_at) \
          VALUES ($1, $2, $3, $4, $5)",
@@ -226,7 +217,7 @@ async fn load_ceremony(
             .await?;
 
     match ceremony {
-        Some(c) if c.purpose == purpose && c.expires_at >= Utc::now() => {
+        Some(c) if c.purpose == purpose && c.expires_at >= *NOW => {
             sqlx::query("DELETE FROM auth_ceremonies WHERE id = $1")
                 .bind(c.id)
                 .execute(&state.pool)

@@ -5,9 +5,10 @@ use axum::http::{header, HeaderValue, Method};
 use tower_http::cors::CorsLayer;
 use tower_http::trace::TraceLayer;
 
+use crate::auth::webauthn;
 use crate::config::{load_config, load_dotenv};
-use crate::auth::{db, webauthn};
 use crate::routes;
+use crate::utils::db;
 use crate::AppState;
 
 pub async fn run() -> anyhow::Result<()> {
@@ -43,7 +44,9 @@ pub async fn run() -> anyhow::Result<()> {
 }
 
 fn build_cors(origin: &str) -> anyhow::Result<CorsLayer> {
-    let origin: HeaderValue = origin.parse().context("ORIGIN is not a valid header value")?;
+    let origin: HeaderValue = origin
+        .parse()
+        .context("ORIGIN is not a valid header value")?;
     Ok(CorsLayer::new()
         .allow_origin(origin)
         .allow_methods([Method::GET, Method::POST, Method::OPTIONS])

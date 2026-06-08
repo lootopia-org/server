@@ -41,8 +41,7 @@ pub fn otpauth_uri(issuer: &str, account: &str, secret: &[u8]) -> String {
 }
 
 fn hotp(secret: &[u8], counter: u64) -> String {
-    let mut mac = Hmac::<Sha1>::new_from_slice(secret)
-        .expect("HMAC accepts keys of any length");
+    let mut mac = Hmac::<Sha1>::new_from_slice(secret).expect("HMAC accepts keys of any length");
     mac.update(&counter.to_be_bytes());
     let digest = mac.finalize().into_bytes();
 

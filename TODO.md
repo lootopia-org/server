@@ -1,0 +1,2 @@
+- Sercret service key so that only frontend can update a users profile
+- Ask cusor to use macros in auth/api endpoints

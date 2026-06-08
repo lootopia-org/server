@@ -109,10 +109,12 @@ Tokens are returned in the JSON body. Send them back either as
 
 | Method & path | Body | Purpose |
 |---|---|---|
-| `POST /auth/register` | `{email, password}` | Create account, send verification email |
+| `POST /auth/register` | `{username, email, password, bio, avatar}` | Create account, send verification email |
 | `GET  /auth/verify-email?token=…` | – | Confirm email ownership |
 | `POST /auth/resend-verification` | `{email}` | Re-send the verification link |
 | `POST /auth/login` | `{email, password}` | First factor; returns `{token, mfaRequired, mfaMethods}` |
+| `POST /auth/forgot-password` | `{email}` | Request a reset; emails a single-use link. Always returns a generic message (no account enumeration) |
+| `POST /auth/reset-password` | `{token, new_password}` | Set a new password using the emailed token; single-use, expiring, and revokes existing sessions |
 | `POST /auth/mfa/totp` | `{token, code}` | Second factor; elevates the session |
 | `POST /auth/webauthn/login/begin` | `{email}` | Get assertion options for passkey login |
 | `POST /auth/webauthn/login/complete` | `{handle, credential}` | Finish passkey login; returns `{token}` |
@@ -149,6 +151,28 @@ The `credential` field in the WebAuthn `complete` calls is the JSON produced by
 the browser's `navigator.credentials.create()` / `.get()`; the `begin` calls
 return the matching `publicKey` options to feed into it.
 
+### Forgot / reset password flow
+
+Both endpoints are **public**, but resetting requires a token that is only ever
+emailed to the address on file — a random caller cannot reset someone else's
+password.
+
+```
+POST /auth/forgot-password {email}
+   └─ always 200 "if an account exists, a reset link has been sent"
+         (if the user exists, a single-use token is emailed as
+          {PUBLIC_BASE_URL}/auth/reset-password?token=…, valid for
+          PASSWORD_RESET_TTL_SECONDS)
+
+POST /auth/reset-password {token, new_password}
+   ├─ unknown / expired token   -> 400 "invalid or expired token"
+   └─ valid token               -> 200; password updated, token consumed,
+                                   and all existing sessions revoked
+```
+
+Reset tokens are stored **hashed (SHA-256)** in `password_reset_tokens`, so a
+database leak does not yield usable reset links.
+
 ---
 
 ## Security notes
@@ -161,6 +185,9 @@ return the matching `publicKey` options to feed into it.
   revoked instantly (logout deletes the row). A session created after the
   password step is marked `mfa_pending` and cannot reach protected routes until
   a second factor succeeds.
+- **Password reset** is gated by a single-use, expiring token (hashed at rest)
+  that is only delivered by email; `/auth/forgot-password` never reveals whether
+  an account exists, and a successful reset revokes the user's existing sessions.
 - **WebAuthn** challenges are single-use and time-limited (`CEREMONY_TTL_SECONDS`),
   and the signature counter is checked to detect cloned authenticators.
 - For production, terminate TLS in front of the server (passkeys require a
