@@ -1,6 +1,7 @@
 pub mod contants;
 pub mod db;
 pub mod json;
+pub mod types;
 
 #[macro_export]
 macro_rules! impl_from {
@@ -33,16 +34,14 @@ macro_rules! make_update_dto {
 
 #[macro_export]
 macro_rules! define_roles {
-    ($($struct:ident => $role:expr),* $(,)?) => {
-        $(pub struct $struct;)*
-
-        pub trait RequiredRole {
-            fn role() -> Option<Role>;
-        }
-
+    ($($name:ident => $roles:expr),* $(,)?) => {
         $(
-            impl RequiredRole for $struct {
-                fn role() -> Option<Role> { $role }
+            pub struct $name;
+
+            impl crate::auth::session::RequiredRole for $name {
+                fn roles() -> &'static [Role] {
+                    &$roles
+                }
             }
         )*
     };

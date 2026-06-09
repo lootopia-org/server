@@ -3,6 +3,8 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use uuid::Uuid;
 
+use crate::utils::types::nullable;
+
 #[derive(Debug, Deserialize)]
 pub struct RegisterReq {
     pub email: String,
@@ -17,9 +19,11 @@ pub struct EmailReq {
     pub email: String,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 pub struct LoginReq {
+    #[serde(default, deserialize_with = "nullable")]
     pub username: Option<String>,
+    #[serde(default, deserialize_with = "nullable")]
     pub email: Option<String>,
     pub password: String,
 }
@@ -37,7 +41,6 @@ pub struct ResetPasswordReq {
 
 #[derive(Debug, Deserialize)]
 pub struct MfaTotpReq {
-    pub token: String,
     pub code: String,
 }
 

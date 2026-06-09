@@ -131,6 +131,14 @@ Tokens are returned in the JSON body. Send them back either as
 | `POST /auth/webauthn/register/begin` | – | Get creation options for a new passkey |
 | `POST /auth/webauthn/register/complete` | `{handle, credential}` | Store the new passkey |
 | `GET  /auth/webauthn/credentials` | – | List registered passkeys |
+| `GET  /profile` | – | Show a users profile |
+| `POST  /profile` | - | create a new profile |
+| `PATCH  /profile` | {hunt_id} | update a profile, in order to increase compleed hunts and points |
+| `GET  /auth/webauthn/credentials` | – | List registered passkeys |
+
+
+
+
 
 ### Login / MFA flow
 

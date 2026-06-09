@@ -1,7 +1,3 @@
--- Password reset tokens for the public forgot/reset-password flow.
--- Only the SHA-256 hash of the token is stored, so a database leak does not
--- hand out working reset links. Possession of the emailed token is what
--- authorizes a reset.
 CREATE TABLE IF NOT EXISTS password_reset_tokens (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     user_id     UUID        NOT NULL REFERENCES users (id) ON DELETE CASCADE,

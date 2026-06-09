@@ -72,11 +72,13 @@ pub struct AuthCeremony {
 pub enum Role {
     Admin,
     Partner,
-    User,
+    Player,
+    AdminOrPartaner,
 }
 
 define_roles! {
-    RoleAdmin   => Some(Role::Admin),
-    RolePartner => Some(Role::Partner),
-    RoleUser    => Some(Role::User),
+    RoleAdmin => [Role::Admin],
+    RolePartner => [Role::Partner],
+    RolePlyer => [Role::Player],
+    RoleAdminOrPartener => [Role::Admin, Role::Partner]
 }

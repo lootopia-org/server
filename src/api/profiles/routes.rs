@@ -4,14 +4,17 @@ use axum::{
 };
 
 use crate::{
-    profiles::handlers::{create_profile, delete_profile, get_profile, update_profile},
+    profiles::handlers::{
+        create_profile, delete_profile, get_profile, list_profiles, update_profile,
+    },
     AppState,
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
-        .route("/get", get(get_profile))
-        .route("/create", post(create_profile))
-        .route("/update", patch(update_profile))
-        .route("/delete", delete(delete_profile))
+        .route("/list", get(list_profiles))
+        .route("/", get(get_profile))
+        .route("/", post(create_profile))
+        .route("/", patch(update_profile))
+        .route("/", delete(delete_profile))
 }

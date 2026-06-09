@@ -1,17 +1,25 @@
-use axum::{extract::State, http::StatusCode, Json};
+use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
 use chrono::{DateTime, Utc};
 
 use crate::{
-    auth::session::AuthedUser,
+    auth::session::{AuthedAdmin, AuthedUser},
     error::{ApiError, ApiResult},
     profiles::{
         dto::{Profile, UpdateProfile},
         models::UserProfiles,
     },
-    query_create, query_delete, query_get, query_scale, query_update,
+    query_create, query_delete, query_get, query_list, query_scale, query_update,
     utils::contants::NOW,
     AppState,
 };
+
+pub async fn list_profiles(
+    State(state): State<AppState>,
+    _auth: AuthedAdmin,
+) -> ApiResult<Json<Vec<Profile>>> {
+    let profiles = query_list!(&state.pool, UserProfiles, "user_profiles");
+    Ok(Json(profiles.into_iter().map(Into::into).collect()))
+}
 
 pub async fn get_profile(
     State(state): State<AppState>,
@@ -32,7 +40,7 @@ pub async fn get_profile(
 pub async fn create_profile(
     State(state): State<AppState>,
     auth: AuthedUser,
-) -> ApiResult<Json<Profile>> {
+) -> ApiResult<impl IntoResponse> {
     let existing = query_get!(
         &state.pool,
         UserProfiles,
@@ -52,18 +60,18 @@ pub async fn create_profile(
         "updated_at" => *NOW
     );
 
-    Ok(Json(profile.into()))
+    Ok((StatusCode::CREATED, Json(Profile::from(profile))))
 }
 
 pub async fn update_profile(
     State(state): State<AppState>,
     auth: AuthedUser,
     Json(req): Json<UpdateProfile>,
-) -> ApiResult<Json<Profile>> {
+) -> ApiResult<impl IntoResponse> {
     let hunt_valid: bool = query_scale!(
         &state.pool,
-        "SELECT EXISTS(SELECT 1 FROM hunts WHERE id = $1 AND status = 'active' AND launch_mode = 'live')",
-        req.hunt_id.clone()
+        "SELECT EXISTS(SELECT 1 FROM hunts WHERE id = $1 AND status = 'active')",
+        &req.hunt_id
     );
     if !hunt_valid {
         return Err(ApiError::not_found("hunt not found or not available"));
@@ -72,7 +80,7 @@ pub async fn update_profile(
     let hunt_points: i32 = query_scale!(
         &state.pool,
         "SELECT COALESCE(SUM(points), 0)::int FROM hunt_steps WHERE hunt_id = $1",
-        req.hunt_id.clone()
+        &req.hunt_id
     );
     if hunt_points == 0 {
         return Err(ApiError::not_found("hunt not found or has no steps"));
@@ -80,8 +88,8 @@ pub async fn update_profile(
 
     let hunt_belongs: bool = query_scale!(
         &state.pool,
-        "SELECT EXISTS(SELECT 1 FROM hunts_participants WHERE hunt_id = $1 AND user_id = $2)",
-        req.hunt_id.clone(),
+        "SELECT EXISTS(SELECT 1 FROM hunt_participants WHERE hunt_id = $1 AND user_id = $2)",
+        &req.hunt_id,
         auth.user.id
     );
     if !hunt_belongs {
@@ -92,9 +100,9 @@ pub async fn update_profile(
 
     let completed_at: Option<DateTime<Utc>> = query_scale!(
         &mut *tx,
-        "SELECT completed_at FROM hunts_participants WHERE user_id=$1 AND hunt_id=$2",
+        "SELECT completed_at FROM hunt_participants WHERE user_id=$1 AND hunt_id=$2",
         auth.user.id,
-        req.hunt_id.clone()
+        &req.hunt_id
     );
     if completed_at.is_some() {
         tx.rollback().await?;
@@ -126,16 +134,16 @@ pub async fn update_profile(
         "updated_at"      => Some(*NOW)
     );
 
-    query_create!(&mut *tx, "completed_hunts",
+    query_create!(&mut *tx, "hunt_participants",
         "user_id" => auth.user.id,
-        "hunt_id" => req.hunt_id.clone(),
+        "hunt_id" => &req.hunt_id,
         "points_awarded" => hunt_points,
         "completed_at" => *NOW
     );
 
     tx.commit().await?;
 
-    Ok(Json(profile.into()))
+    Ok((StatusCode::ACCEPTED, Json(Profile::from(profile))))
 }
 
 pub async fn delete_profile(

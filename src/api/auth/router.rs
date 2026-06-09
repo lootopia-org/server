@@ -28,17 +28,14 @@ pub fn public_routes() -> Router<AppState> {
 pub fn protected_routes() -> Router<AppState> {
     Router::new()
         .route("/me", get(me))
-        .route("/auth/logout", post(logout))
-        .route("/auth/totp/enroll/begin", post(totp_enroll_begin))
-        .route("/auth/totp/enroll/verify", post(totp_enroll_verify))
-        .route("/auth/totp/disable", post(totp_disable))
+        .route("/logout", post(logout))
+        .route("/totp/enroll/begin", post(totp_enroll_begin))
+        .route("/totp/enroll/verify", post(totp_enroll_verify))
+        .route("/totp/disable", post(totp_disable))
+        .route("/webauthn/register/begin", post(webauthn_register_begin))
         .route(
-            "/auth/webauthn/register/begin",
-            post(webauthn_register_begin),
-        )
-        .route(
-            "/auth/webauthn/register/complete",
+            "/webauthn/register/complete",
             post(webauthn_register_complete),
         )
-        .route("/auth/webauthn/credentials", get(credentials))
+        .route("/webauthn/credentials", get(credentials))
 }

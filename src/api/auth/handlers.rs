@@ -4,6 +4,7 @@ use axum::{
     response::IntoResponse,
     Json,
 };
+use axum_extra::extract::CookieJar;
 use chrono::Duration;
 use serde_json::Value;
 use uuid::Uuid;
@@ -22,7 +23,7 @@ use crate::{
         },
         email,
         models::{Credential, EmailToken, PasswordResetToken, Session, User},
-        session::{create_session, session_token_from_jwt, AuthedUser},
+        session::{create_session, AuthedUser},
         webauthn,
     },
     error::{ApiError, ApiResult},
@@ -262,11 +263,15 @@ pub async fn reset_password(
 }
 
 pub async fn mfa_totp(
+    jar: CookieJar,
     State(state): State<AppState>,
     Json(req): Json<MfaTotpReq>,
 ) -> ApiResult<Json<TokenResp>> {
-    let session_token = session_token_from_jwt(&state, &req.token)?;
-    let session = query_get!(&state.pool, Session, "sessions", "token", &session_token);
+    let token = jar
+        .get("session")
+        .map(|c| c.value().to_string())
+        .ok_or(ApiError::unauthorized("token not found"))?;
+    let session = query_get!(&state.pool, Session, "sessions", "token", &token);
 
     let session = match session {
         Some(s) if s.expires_at >= *NOW => s,
@@ -292,7 +297,7 @@ pub async fn mfa_totp(
         "mfa_pending" => Some(false)
     );
 
-    Ok(Json(TokenResp { token: req.token }))
+    Ok(Json(TokenResp { token: token }))
 }
 
 pub async fn webauthn_login_begin(
@@ -423,12 +428,11 @@ pub async fn credentials(
     State(state): State<AppState>,
     auth: AuthedUser,
 ) -> ApiResult<Json<Vec<CredentialResp>>> {
-    let rows = sqlx::query_as::<_, Credential>(
-        "SELECT * FROM credentials WHERE user_id = $1 ORDER BY id",
-    )
-    .bind(auth.user.id)
-    .fetch_all(&state.pool)
-    .await?;
+    let rows =
+        sqlx::query_as::<_, Credential>("SELECT * FROM credentials WHERE user_id = $1 ORDER BY id")
+            .bind(auth.user.id)
+            .fetch_all(&state.pool)
+            .await?;
     Ok(Json(
         rows.into_iter()
             .map(|c| CredentialResp {

@@ -43,13 +43,34 @@ fn connect_options(database_url: &str) -> anyhow::Result<PgConnectOptions> {
 
 #[macro_export]
 macro_rules! query_scale {
-    ($pool:expr, $sql:expr $(, $bind:expr)* $(,)?) => {{
+    ($pool:expr, $sql:expr) => {{
+        sqlx::query_scalar($sql)
+            .fetch_one($pool)
+            .await?
+    }};
+
+    ($pool:expr, $sql:expr, $($bind:expr),+ $(,)?) => {{
         let mut query = sqlx::query_scalar($sql);
         $(
             query = query.bind($bind);
-        )*
+        )+
         query.fetch_one($pool).await?
     }};
+}
+
+#[macro_export]
+macro_rules! query_list {
+    ($pool:expr, $model:ty, $table:expr) => {
+        sqlx::query_as::<_, $model>(&format!("SELECT * FROM {}", $table))
+            .fetch_all($pool)
+            .await?
+    };
+    ($pool:expr, $model:ty, $table:expr, $where:expr $(, $arg:expr)*) => {
+        sqlx::query_as::<_, $model>(&format!("SELECT * FROM {} WHERE {}", $table, $where))
+            $(.bind($arg))*
+            .fetch_all($pool)
+            .await?
+    };
 }
 
 #[macro_export]

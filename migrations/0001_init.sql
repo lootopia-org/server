@@ -5,12 +5,16 @@ CREATE TABLE IF NOT EXISTS users (
     id              UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
     email           TEXT        NOT NULL UNIQUE,
     email_verified  BOOLEAN     NOT NULL,
+    username        TEXT        UNIQUE,
+    role            TEXT        CHECK (role IN ('admin', 'partner', 'player')),
+    bio             TEXT,
+    avatar          TEXT,
     password_salt   BYTEA       NOT NULL,
     password_hash   BYTEA       NOT NULL,
-    user_handle     BYTEA       NOT NULL UNIQUE,
     totp_secret     BYTEA,
     totp_enabled    BOOLEAN     NOT NULL,
-    created_at      TIMESTAMPTZ NOT NULL
+    created_at      TIMESTAMPTZ NOT NULL,
+    updated_at      TIMESTAMPTZ NOT NULL
 );
 CREATE TABLE IF NOT EXISTS email_tokens (
     id          UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
