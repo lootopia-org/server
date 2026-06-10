@@ -4,6 +4,7 @@ use chrono::{DateTime, Utc};
 use crate::{
     auth::session::{AuthedAdmin, AuthedUser},
     error::{ApiError, ApiResult},
+    event::{event::Event, event_types, topics},
     profiles::{
         dto::{Profile, UpdateProfile},
         models::UserProfiles,
@@ -143,7 +144,14 @@ pub async fn update_profile(
 
     tx.commit().await?;
 
-    Ok((StatusCode::ACCEPTED, Json(Profile::from(profile))))
+    let resp = Profile::from(profile);
+    state.event_handler.publish(Event::new(
+        event_types::PROFILE_UPDATED,
+        topics::PROFILE,
+        serde_json::to_value(&resp).unwrap_or(serde_json::Value::Null),
+    ));
+
+    Ok((StatusCode::ACCEPTED, Json(resp)))
 }
 
 pub async fn delete_profile(

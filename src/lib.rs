@@ -1,6 +1,8 @@
 pub mod api;
 pub mod config;
 pub mod error;
+pub mod event;
+pub mod infra;
 pub mod routes;
 pub mod server;
 pub mod state;

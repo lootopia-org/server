@@ -40,3 +40,8 @@ echo "================================================================"
 echo "===== smoke test hunt (BASE_URL=http://localhost:$PORT) ====="
 BASE_URL="http://localhost:$PORT" LOG_FILE="$LOG_FILE" bash tests/smoke_hunt.sh
 echo "================================================================"
+
+echo "================================================================"
+echo "===== smoke test ws (BASE_URL=http://localhost:$PORT) ====="
+BASE_URL="http://localhost:$PORT" LOG_FILE="$LOG_FILE" bash tests/smoke_ws.sh
+echo "================================================================"

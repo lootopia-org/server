@@ -79,6 +79,6 @@ pub enum Role {
 define_roles! {
     RoleAdmin => [Role::Admin],
     RolePartner => [Role::Partner],
-    RolePlyer => [Role::Player],
+    RolePlyer => [Role::Player, Role::Partner, Role::Admin],
     RoleAdminOrPartener => [Role::Admin, Role::Partner]
 }

@@ -3,6 +3,8 @@ use std::fs;
 use std::path::Path;
 
 use crate::auth::crypto::password::PasswordParams;
+use crate::infra::kafka::KafkaConfig;
+use crate::infra::redis::RedisConfig;
 
 #[derive(Debug, Clone)]
 pub struct SmtpConfig {
@@ -17,6 +19,8 @@ pub struct SmtpConfig {
 pub struct Config {
     pub port: u16,
     pub database_url: String,
+    pub kafka: KafkaConfig,
+    pub redis: RedisConfig,
     pub password_pepper: String,
     pub pbkdf2_iterations: u32,
     pub rp_name: String,
@@ -82,6 +86,13 @@ pub fn load_config() -> Config {
             "DATABASE_URL",
             "host=localhost port=5432 dbname=authdb user=postgres password=postgres",
         ),
+        kafka: KafkaConfig {
+            brokers: env_str("KAFKA_BROKERS", "localhost:9092"),
+            topic: env_str("KAFKA_TOPIC", "events"),
+        },
+        redis: RedisConfig {
+            url: env_str("REDIS_URL", "redis://localhost:6379"),
+        },
         password_pepper: env_str("PASSWORD_PEPPER", "dev-only-insecure-pepper-change-me"),
         pbkdf2_iterations: read_env("PBKDF2_ITERATIONS", 200_000),
         rp_name: env_str("RP_NAME", "Rust Auth Server"),

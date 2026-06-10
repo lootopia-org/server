@@ -1,10 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{
-    hunts::models::{Hunt, HuntStep},
-    impl_from,
-};
+use crate::{api::hunt_steps::dto::HuntStepResp, hunts::models::Hunt, impl_from};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -20,20 +17,7 @@ pub struct HuntResp {
     pub rating: Option<String>,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-pub struct HuntStepResp {
-    pub id: Uuid,
-    pub step_order: i32,
-    pub title: String,
-    pub description: Option<String>,
-    pub r#type: Option<String>,
-    pub latitude: Option<String>,
-    pub longitude: Option<String>,
-    pub points: Option<f32>,
-}
-
-#[derive(Debug, Serialize)]
+#[derive(Debug, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HuntDetail {
     #[serde(flatten)]
@@ -86,6 +70,18 @@ pub struct JoinHunt {
     pub hunt_id: Uuid,
 }
 
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+pub struct HuntParticipantResp {
+    pub user_id: Uuid,
+    pub email: String,
+    pub points: Option<i32>,
+    pub level: Option<f64>,
+    pub completed_hunts: Option<i32>,
+    pub points_awarded: i32,
+    pub joined_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
+}
+
 impl_from!(Hunt => HuntResp {
     id,
     title,
@@ -96,15 +92,4 @@ impl_from!(Hunt => HuntResp {
     estimated_duration,
     status,
     rating,
-});
-
-impl_from!(HuntStep => HuntStepResp {
-    id,
-    step_order,
-    title,
-    description,
-    r#type,
-    latitude,
-    longitude,
-    points,
 });

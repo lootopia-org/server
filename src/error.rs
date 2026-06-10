@@ -60,6 +60,12 @@ impl From<anyhow::Error> for ApiError {
     }
 }
 
+impl From<ApiError> for anyhow::Error {
+    fn from(err: ApiError) -> Self {
+        anyhow::anyhow!("{}", err.message)
+    }
+}
+
 impl From<crate::auth::crypto::jwt::JwtError> for ApiError {
     fn from(err: crate::auth::crypto::jwt::JwtError) -> Self {
         use crate::auth::crypto::jwt::JwtError;

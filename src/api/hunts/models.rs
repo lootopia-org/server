@@ -18,20 +18,6 @@ pub struct Hunt {
 }
 
 #[derive(Debug, Clone, FromRow)]
-pub struct HuntStep {
-    pub id: Uuid,
-    pub hunt_id: Uuid,
-    pub step_order: i32,
-    pub title: String,
-    pub description: Option<String>,
-    pub r#type: Option<String>,
-    pub latitude: Option<String>,
-    pub longitude: Option<String>,
-    pub points: Option<f32>,
-    pub created_at: DateTime<Utc>,
-}
-
-#[derive(Debug, Clone, FromRow)]
 pub struct HuntParticipant {
     pub id: Uuid,
     pub user_id: Uuid,

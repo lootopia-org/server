@@ -164,3 +164,14 @@ macro_rules! query_update {
         query.bind($id_val).fetch_one($pool).await?
     }};
 }
+
+#[macro_export]
+macro_rules! query_join {
+    ($pool:expr, $model:ty, $sql:expr $(, $arg:expr)* $(,)?) => {{
+        let mut query = sqlx::query_as::<_, $model>($sql);
+        $(
+            query = query.bind($arg);
+        )*
+        query.fetch_all($pool).await?
+    }};
+}

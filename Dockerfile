@@ -1,6 +1,8 @@
 FROM rust:1.88-bookworm AS builder
 
 RUN apt-get update && apt-get install -y \
+    cmake \
+    g++ \
     pkg-config \
     libssl-dev \
  && rm -rf /var/lib/apt/lists/*

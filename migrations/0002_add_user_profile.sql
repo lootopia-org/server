@@ -29,6 +29,7 @@ CREATE TABLE IF NOT EXISTS hunt_steps (
     title VARCHAR(255) NOT NULL,
     description TEXT,
     type VARCHAR(50),
+    awnser VARCHAR(50),
     latitude VARCHAR(255),
     longitude VARCHAR(255)
     points REAL,
@@ -44,6 +45,15 @@ CREATE TABLE IF NOT EXISTS hunt_participants (
     joined_at       TIMESTAMPTZ,
     completed_at    TIMESTAMPTZ,
     CONSTRAINT uq_completed_hunts_user_hunt UNIQUE (user_id, hunt_id)
+);
+
+CREATE TABLE hunt_step_completions (
+    id           UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    step_id      UUID NOT NULL REFERENCES hunt_steps(id) ON DELETE CASCADE,
+    hunt_id      UUID NOT NULL REFERENCES hunts(id) ON DELETE CASCADE,
+    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    UNIQUE (user_id, step_id)
 );
 
 CREATE TABLE IF NOT EXISTS badges (

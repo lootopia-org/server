@@ -11,7 +11,7 @@ pub struct Profile {
     pub completed_hunts: i32,
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateProfile {
     pub hunt_id: Uuid,

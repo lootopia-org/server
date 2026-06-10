@@ -7,6 +7,7 @@ use tower_http::trace::TraceLayer;
 
 use crate::auth::webauthn;
 use crate::config::{load_config, load_dotenv};
+use crate::event::event_handler::EventHandler;
 use crate::routes;
 use crate::utils::db;
 use crate::AppState;
@@ -18,12 +19,13 @@ pub async fn run() -> anyhow::Result<()> {
 
     let pool = db::make_pool(&cfg.database_url).await?;
     let webauthn = webauthn::build(&cfg)?;
-
+    let event_handler = EventHandler::connect_and_spawn(&cfg.kafka, &cfg.redis).await?;
     let cors = build_cors(&cfg.origin)?;
     let port = cfg.port;
 
     let state = AppState {
         pool,
+        event_handler,
         config: Arc::new(cfg),
         webauthn: Arc::new(webauthn),
     };
@@ -49,7 +51,13 @@ fn build_cors(origin: &str) -> anyhow::Result<CorsLayer> {
         .context("ORIGIN is not a valid header value")?;
     Ok(CorsLayer::new()
         .allow_origin(origin)
-        .allow_methods([Method::GET, Method::POST, Method::OPTIONS])
+        .allow_methods([
+            Method::GET,
+            Method::POST,
+            Method::PATCH,
+            Method::DELETE,
+            Method::OPTIONS,
+        ])
         .allow_headers([header::CONTENT_TYPE, header::AUTHORIZATION])
         .allow_credentials(true))
 }
