@@ -52,6 +52,8 @@ pub async fn register(
     }
 
     let stored = password::hash_new_password(&state.config.password_params(), &req.password);
+    let avatar = req.avatar.filter(|s| !s.is_empty());
+    let bio = req.bio.filter(|s| !s.is_empty());
 
     let user = query_create!(&state.pool, User, "users",
         "username" => &req.username,
@@ -62,8 +64,8 @@ pub async fn register(
         "role" => "player",
         "totp_secret" => None::<Vec<u8>>,
         "totp_enabled" => false,
-        "avatar" => &req.avatar,
-        "bio" => &req.bio,
+        "avatar" => avatar,
+        "bio" => bio,
         "created_at" => *NOW,
         "updated_at" => *NOW
     );
