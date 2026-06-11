@@ -107,7 +107,7 @@ impl<R: RequiredRole + Send + Sync + 'static> FromRequestParts<AppState> for Aut
 
         let role = match user.role.as_str() {
             "admin" => Role::Admin,
-            "partener" => Role::Partner,
+            "partner" => Role::Partner,
             "player" => Role::Player,
             _ => return Err(ApiError::forbidden("unknown role")),
         };
