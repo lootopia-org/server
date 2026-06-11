@@ -341,6 +341,7 @@ pub async fn me(State(state): State<AppState>, auth: AuthedUser) -> ApiResult<Js
     let passkeys = count_passkeys(&state, auth.user.id).await?;
     Ok(Json(MeResp {
         id: auth.user.id,
+        role: auth.user.role,
         username: auth.user.username,
         email: auth.user.email,
         email_verified: auth.user.email_verified,

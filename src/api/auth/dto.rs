@@ -92,6 +92,7 @@ pub struct MeResp {
     pub email_verified: bool,
     pub totp_enabled: bool,
     pub passkeys: i64,
+    pub role: String
 }
 
 #[derive(Debug, Serialize)]
