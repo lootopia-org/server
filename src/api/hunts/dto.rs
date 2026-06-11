@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-use crate::{api::hunt_steps::dto::HuntStepResp, hunts::models::Hunt, impl_from};
+use crate::{api::hunts::hunt_steps::dto::HuntStepResp, hunts::models::Hunt, impl_from};
 
 #[derive(Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]

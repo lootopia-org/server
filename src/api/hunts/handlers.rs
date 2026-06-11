@@ -8,7 +8,7 @@ use uuid::Uuid;
 
 use crate::{
     api::{
-        hunt_steps::{
+        hunts::hunt_steps::{
             dto::HuntStepResp,
             models::{HuntStep, HuntStepCompletion},
         },

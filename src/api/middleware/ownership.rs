@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use crate::{
-    api::hunt_steps::models::HuntStep, auth::session::AuthedAdminOrPartner, error::ApiError,
+    api::hunts::hunt_steps::models::HuntStep, auth::session::AuthedAdminOrPartner, error::ApiError,
     hunts::models::Hunt, query_get, AppState,
 };
 

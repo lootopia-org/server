@@ -4,6 +4,7 @@ use axum::{
 };
 
 use crate::{
+    api::hunts::hunt_steps,
     hunts::handlers::{
         create_hunt, delete_hunt, get_hunt, get_hunt_participants, hunts_in_progrss, join_hunt,
         leave_hunt, list_hunts, update_hunt,
@@ -22,4 +23,5 @@ pub fn router() -> Router<AppState> {
         .route("/{id}", delete(delete_hunt))
         .route("/leave", post(leave_hunt))
         .route("/joined", get(hunts_in_progrss))
+        .nest("/step", hunt_steps::routes::router())
 }

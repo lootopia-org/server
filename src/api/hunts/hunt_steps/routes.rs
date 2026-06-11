@@ -4,7 +4,7 @@ use axum::{
 };
 
 use crate::{
-    api::hunt_steps::handlers::{
+    api::hunts::hunt_steps::handlers::{
         complete_step, completed_steps, delete_step, get_step, update_step,
     },
     AppState,
