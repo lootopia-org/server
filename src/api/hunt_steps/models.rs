@@ -8,7 +8,7 @@ pub struct HuntStepCompletion {
     pub hunt_id: Uuid,
     pub user_id: Uuid,
     pub step_id: Uuid,
-    pub completed_at: DateTime<Utc>,
+    pub completed_at: Option<DateTime<Utc>>,
 }
 
 #[derive(Debug, Clone, FromRow)]
