@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS user_profiles (
     points          INTEGER NOT NULL DEFAULT 0,
     level           REAL NOT NULL DEFAULT 1.1,
     completed_hunts INTEGER NOT NULL DEFAULT 0,
-    updated_at      TIMESTAMPTZ
+    updated_at      TIMESTAMPTZ  DEFAULT NOW()
 );
 
 CREATE TABLE IF NOT EXISTS hunts (
@@ -31,8 +31,8 @@ CREATE TABLE IF NOT EXISTS hunt_steps (
     type VARCHAR(50),
     awnser VARCHAR(50),
     latitude VARCHAR(255),
-    longitude VARCHAR(255)
-    points REAL,
+    longitude VARCHAR(255),
+    points INTEGER NOT NULL DEFAULT 0,
     created_at TIMESTAMPTZ DEFAULT NOW(),
     UNIQUE (hunt_id, step_order)
 );
@@ -52,7 +52,7 @@ CREATE TABLE hunt_step_completions (
     user_id      UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     step_id      UUID NOT NULL REFERENCES hunt_steps(id) ON DELETE CASCADE,
     hunt_id      UUID NOT NULL REFERENCES hunts(id) ON DELETE CASCADE,
-    completed_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+    completed_at TIMESTAMPTZ,
     UNIQUE (user_id, step_id)
 );
 
