@@ -7,7 +7,7 @@ pub struct HuntStepCompletion {
     pub id: Uuid,
     pub hunt_id: Uuid,
     pub user_id: Uuid,
-    pub steo_id: Uuid,
+    pub step_id: Uuid,
     pub created_at: DateTime<Utc>,
 }
 
