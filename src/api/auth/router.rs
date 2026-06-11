@@ -1,14 +1,14 @@
 use crate::{
     auth::handlers::{
         credentials, forgot_password, login, logout, me, mfa_totp, register, resend,
-        reset_password, totp_disable, totp_enroll_begin, totp_enroll_verify, verify_email,
-        webauthn_login_begin, webauthn_login_complete, webauthn_register_begin,
+        reset_password, totp_disable, totp_enroll_begin, totp_enroll_verify, update_meta_data,
+        verify_email, webauthn_login_begin, webauthn_login_complete, webauthn_register_begin,
         webauthn_register_complete,
     },
     AppState,
 };
 use axum::{
-    routing::{get, post},
+    routing::{get, patch, post},
     Router,
 };
 
@@ -28,6 +28,7 @@ pub fn public_routes() -> Router<AppState> {
 pub fn protected_routes() -> Router<AppState> {
     Router::new()
         .route("/me", get(me))
+        .route("/me/update", patch(update_meta_data))
         .route("/logout", post(logout))
         .route("/totp/enroll/begin", post(totp_enroll_begin))
         .route("/totp/enroll/verify", post(totp_enroll_verify))
