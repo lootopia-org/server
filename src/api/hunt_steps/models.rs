@@ -22,6 +22,6 @@ pub struct HuntStep {
     pub r#type: Option<String>,
     pub latitude: Option<String>,
     pub longitude: Option<String>,
-    pub points: Option<f32>,
+    pub points: Option<i32>,
     pub created_at: DateTime<Utc>,
 }

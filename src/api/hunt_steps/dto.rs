@@ -13,7 +13,7 @@ pub struct HuntStepResp {
     pub r#type: Option<String>,
     pub latitude: Option<String>,
     pub longitude: Option<String>,
-    pub points: Option<f32>,
+    pub points: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -26,7 +26,7 @@ pub struct UpdateHuntStep {
     pub latitude: Option<String>,
     pub longitude: Option<String>,
     pub awnser: Option<String>,
-    pub points: Option<f32>,
+    pub points: Option<i32>,
 }
 
 #[derive(Deserialize, Serialize)]
