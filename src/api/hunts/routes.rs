@@ -18,10 +18,10 @@ pub fn router() -> Router<AppState> {
         .route("/", post(create_hunt))
         .route("/partcipants", get(get_hunt_participants))
         .route("/join", post(join_hunt))
+        .route("/leave", post(leave_hunt))
+        .route("/joined", get(hunts_in_progrss))
         .route("/{id}", get(get_hunt))
         .route("/{id}", patch(update_hunt))
         .route("/{id}", delete(delete_hunt))
-        .route("/leave", post(leave_hunt))
-        .route("/joined", get(hunts_in_progrss))
         .nest("/step", hunt_steps::routes::router())
 }

@@ -29,7 +29,8 @@ fn derive_cache_keys(pattern: &str, real_path: &str) -> Vec<String> {
     keys.push(root.to_string());
 
     for (i, seg) in pat_segs.iter().enumerate().skip(1) {
-        if seg.starts_with(':') {
+        let is_param = seg.starts_with(':') || (seg.starts_with('{') && seg.ends_with('}'));
+        if is_param {
             let value = real_segs.get(i).copied().unwrap_or("unknown");
             let param = seg.trim_start_matches(':');
 
