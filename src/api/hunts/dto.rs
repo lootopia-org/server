@@ -47,6 +47,7 @@ pub struct CreateHuntStep {
     pub r#type: Option<String>,
     pub latitude: Option<String>,
     pub longitude: Option<String>,
+    pub awnser: Option<String>,
     pub points: Option<f32>,
 }
 
@@ -71,6 +72,7 @@ pub struct JoinHunt {
 }
 
 #[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
 pub struct HuntParticipantResp {
     pub user_id: Uuid,
     pub email: String,
@@ -82,9 +84,38 @@ pub struct HuntParticipantResp {
     pub completed_at: Option<chrono::DateTime<chrono::Utc>>,
 }
 
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct StepAnalyticsResp {
+    pub step_id: Uuid,
+    pub step_order: i32,
+    pub title: String,
+    pub latitude: Option<String>,
+    pub longitude: Option<String>,
+    pub completion_count: i64,
+}
+
+#[derive(Debug, Serialize, Deserialize, sqlx::FromRow)]
+#[serde(rename_all = "camelCase")]
+pub struct UserLocationResp {
+    pub latitude: String,
+    pub longitude: String,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct HuntAnalyticsResp {
+    pub hunt_id: Uuid,
+    pub participant_count: i64,
+    pub completed_hunt_count: i64,
+    pub steps: Vec<StepAnalyticsResp>,
+    pub user_locations: Vec<UserLocationResp>,
+}
+
 #[derive(Deserialize)]
 pub struct HuntFilters {
     pub status: Option<String>,
+    pub all: Option<bool>,
 }
 
 impl_from!(Hunt => HuntResp {

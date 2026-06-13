@@ -16,6 +16,17 @@ pub struct SmtpConfig {
 }
 
 #[derive(Debug, Clone)]
+pub struct S3Config {
+    pub bucket: String,
+    pub region: String,
+    pub key_prefix: String,
+    pub endpoint: Option<String>,
+    pub public_base_url: Option<String>,
+    pub access_key_id: String,
+    pub secret_access_key: String,
+}
+
+#[derive(Debug, Clone)]
 pub struct Config {
     pub port: u16,
     pub database_url: String,
@@ -27,6 +38,7 @@ pub struct Config {
     pub rp_id: String,
     pub origin: String,
     pub public_base_url: String,
+    pub s3: S3Config,
     pub jwt_secret: String,
     pub email_verify_ttl_seconds: i64,
     pub ceremony_ttl_seconds: i64,
@@ -99,6 +111,22 @@ pub fn load_config() -> Config {
         rp_id: env_str("RP_ID", "localhost"),
         origin: env_str("ORIGIN", "http://localhost:8080"),
         public_base_url: env_str("PUBLIC_BASE_URL", "http://localhost:8080"),
+        s3: S3Config {
+            bucket: env_str("S3_BUCKET", "lootopia"),
+            region: env::var("AWS_REGION")
+                .or_else(|_| env::var("S3_REGION"))
+                .unwrap_or_else(|_| "us-east-1".to_string()),
+            key_prefix: env_str("S3_KEY_PREFIX", "lootopia"),
+            endpoint: Some(
+                env::var("S3_ENDPOINT")
+                    .unwrap_or_else(|_| "http://127.0.0.1:9000".to_string()),
+            ),
+            public_base_url: env::var("S3_PUBLIC_BASE_URL")
+                .ok()
+                .filter(|value| !value.is_empty()),
+            access_key_id: env_str("AWS_ACCESS_KEY_ID", "rustfsadmin"),
+            secret_access_key: env_str("AWS_SECRET_ACCESS_KEY", "rustfsadmin"),
+        },
         jwt_secret: env_str("JWT_SECRET", "dev-only-insecure-jwt-secret-change-me"),
         email_verify_ttl_seconds: read_env("EMAIL_VERIFY_TTL_SECONDS", 60 * 60 * 24),
         ceremony_ttl_seconds: read_env("CEREMONY_TTL_SECONDS", 300),

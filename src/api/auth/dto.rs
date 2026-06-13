@@ -92,7 +92,11 @@ pub struct MeResp {
     pub email_verified: bool,
     pub totp_enabled: bool,
     pub passkeys: i64,
-    pub role: String
+    pub role: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub avatar: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub bio: Option<String>,
 }
 
 #[derive(Debug, Serialize)]

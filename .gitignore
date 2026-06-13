@@ -4,5 +4,8 @@
 # Secrets / local config
 .env
 
+# Uploads
+/uploads/
+
 # Test artifacts
 tests/server.log

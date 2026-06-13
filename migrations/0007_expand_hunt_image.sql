@@ -1,0 +1,2 @@
+-- S3 URLs can exceed VARCHAR(512).
+ALTER TABLE hunts ALTER COLUMN image TYPE TEXT;

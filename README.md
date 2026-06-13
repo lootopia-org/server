@@ -36,7 +36,7 @@ bus), [`pbkdf2`/`hmac`/`sha2`](https://github.com/RustCrypto) for crypto, and
 
 ```bash
 # 1. Start infrastructure (or point env vars at your own instances)
-docker compose up -d db redis kafka
+docker compose up -d db redis kafka rustfs
 
 # 2. Configure
 cp .env.example .env
@@ -55,9 +55,11 @@ Migrations are deliberately **not** run at server start-up, so booting extra
 instances never races to alter tables. Re-run `cargo run --bin migrate` whenever
 you change the schema in `migrations/`.
 
-The server expects **PostgreSQL**, **Redis**, and **Kafka** to be reachable at
-the URLs in `.env` (`DATABASE_URL`, `REDIS_URL`, `KAFKA_BROKERS`). The included
-`docker-compose.yml` provides all three.
+The server expects **PostgreSQL**, **Redis**, **Kafka**, and **S3-compatible
+object storage** to be reachable at the URLs in `.env` (`DATABASE_URL`,
+`REDIS_URL`, `KAFKA_BROKERS`, `S3_ENDPOINT`). The included `docker-compose.yml`
+provides all four — local dev uses [RustFS](https://github.com/rustfs/rustfs)
+on port 9000 (console on 9001).
 
 ### Tests
 
@@ -217,6 +219,7 @@ subscribed to all topics (`*`). Send JSON control messages to filter:
 {"action": "subscribe",   "topics": ["hunts", "profiles"]}
 {"action": "unsubscribe", "topics": ["profiles"]}
 {"action": "ping"}
+{"action": "updateLocation", "latitude": "51.5074", "longitude": "-0.1278"}
 ```
 
 Event payloads mirror the Kafka topic structure:
@@ -226,8 +229,10 @@ Event payloads mirror the Kafka topic structure:
 | `hunts` | `created`, `updated`, `deleted`, `joined`, `leave` |
 | `hunt_steps` | `complete`, `update`, `delete` |
 | `profiles` | `updated` |
+| `notifications` | `proximity`, `hunt_paused` |
 
-Subscribe to a specific resource with `hunts.<uuid>`.
+Subscribe to a specific resource with `hunts.<uuid>`. User-scoped
+notifications are auto-subscribed on connect via `notifications.<userId>`.
 
 ### Login / MFA flow
 
@@ -299,6 +304,8 @@ database leak does not yield usable reset links.
 - Rust 1.88+ (tested with 1.95) and Cargo.
 - PostgreSQL 13+ (the included `docker-compose.yml` provides one).
 - Redis 7+ and Kafka 3.9+ (also provided by `docker-compose.yml`).
+- RustFS or another S3-compatible store for hunt images and avatars (`rustfs`
+  service in `docker-compose.yml`).
 - A system OpenSSL (`libssl-dev` / `openssl`) is needed at build time for the
   WebAuthn dependency.
 

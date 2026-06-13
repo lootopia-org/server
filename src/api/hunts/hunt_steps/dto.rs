@@ -14,6 +14,21 @@ pub struct HuntStepResp {
     pub latitude: Option<String>,
     pub longitude: Option<String>,
     pub points: Option<i32>,
+    pub awnser: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateStepReq {
+    pub hunt_id: Uuid,
+    pub step_order: i32,
+    pub title: String,
+    pub description: Option<String>,
+    pub r#type: Option<String>,
+    pub latitude: Option<String>,
+    pub longitude: Option<String>,
+    pub awnser: Option<String>,
+    pub points: Option<i32>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,11 +44,29 @@ pub struct UpdateHuntStep {
     pub points: Option<i32>,
 }
 
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncHuntStepItem {
+    pub id: Option<Uuid>,
+    pub step_order: i32,
+    pub title: String,
+    pub description: Option<String>,
+    pub r#type: Option<String>,
+    pub latitude: Option<String>,
+    pub longitude: Option<String>,
+    pub awnser: Option<String>,
+    pub points: Option<i32>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncHuntStepsReq {
+    pub steps: Vec<SyncHuntStepItem>,
+}
+
 #[derive(Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CompleteStepReq {
-    pub latitude: Option<String>,
-    pub longitude: Option<String>,
     pub answer: Option<String>,
 }
 
@@ -46,4 +79,5 @@ impl_from!(HuntStep => HuntStepResp {
     latitude,
     longitude,
     points,
+    awnser,
 });

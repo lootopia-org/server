@@ -130,6 +130,19 @@ impl EventHandler {
         self.cache.set(key, value).await
     }
 
+    pub async fn set_with_ttl<T: Serialize>(
+        &self,
+        key: &str,
+        value: &T,
+        ttl_secs: u64,
+    ) -> anyhow::Result<()> {
+        self.cache.set_with_ttl(key, value, ttl_secs).await
+    }
+
+    pub async fn exists(&self, key: &str) -> anyhow::Result<bool> {
+        self.cache.exists(key).await
+    }
+
     pub async fn delete(&self, keys: &[&str]) -> anyhow::Result<u64> {
         self.cache.delete(keys).await
     }

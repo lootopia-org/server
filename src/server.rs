@@ -8,6 +8,7 @@ use tower_http::trace::TraceLayer;
 use crate::auth::webauthn;
 use crate::config::{load_config, load_dotenv};
 use crate::event::event_handler::EventHandler;
+use crate::infra::s3::S3Storage;
 use crate::routes;
 use crate::utils::db;
 use crate::AppState;
@@ -20,6 +21,9 @@ pub async fn run() -> anyhow::Result<()> {
     let pool = db::make_pool(&cfg.database_url).await?;
     let webauthn = webauthn::build(&cfg)?;
     let event_handler = EventHandler::connect_and_spawn(&cfg.kafka, &cfg.redis).await?;
+    let s3 = S3Storage::connect(&cfg.s3)
+        .await
+        .context("connecting to s3")?;
     let cors = build_cors(&cfg.origin)?;
     let port = cfg.port;
 
@@ -28,6 +32,7 @@ pub async fn run() -> anyhow::Result<()> {
         event_handler,
         config: Arc::new(cfg),
         webauthn: Arc::new(webauthn),
+        s3,
     };
 
     let app = routes::router(state)

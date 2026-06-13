@@ -13,14 +13,15 @@ use crate::{
             models::{HuntStep, HuntStepCompletion},
         },
         middleware::ownership::OwnedHunt,
+        notifications::service::notify_hunt_paused,
     },
     auth::session::{AuthedAdminOrPartner, AuthedUser},
     error::{ApiError, ApiResult},
     event::{event::Event, event_types, topics},
     hunts::{
         dto::{
-            CreateHunt, HuntDetail, HuntFilters, HuntParticipantResp, HuntResp, JoinHunt,
-            UpdateHunt,
+            CreateHunt, HuntAnalyticsResp, HuntDetail, HuntFilters, HuntParticipantResp,
+            HuntResp, JoinHunt, StepAnalyticsResp, UpdateHunt, UserLocationResp,
         },
         models::{Hunt, HuntParticipant},
     },
@@ -42,18 +43,32 @@ async fn hunt_steps(state: &AppState, hunt_id: Uuid) -> anyhow::Result<Vec<HuntS
 
 pub async fn list_hunts(
     State(state): State<AppState>,
-    _auth: AuthedUser,
+    auth: AuthedUser,
     Query(filters): Query<HuntFilters>,
 ) -> ApiResult<Json<Vec<HuntResp>>> {
-    let hunts: Vec<Hunt> = match filters.status {
-        Some(status) => query_list!(
+    let can_list_all = auth.user.role == "admin" || auth.user.role == "partner";
+    let hunts: Vec<Hunt> = if filters.all == Some(true) && can_list_all {
+        query_list!(
+            &state.pool,
+            Hunt,
+            "hunts",
+            "1=1 ORDER BY created_at DESC"
+        )
+    } else if let Some(status) = filters.status {
+        query_list!(
             &state.pool,
             Hunt,
             "hunts",
             "status = $1 ORDER BY created_at DESC",
             status
-        ),
-        None => query_list!(&state.pool, Hunt, "hunts"),
+        )
+    } else {
+        query_list!(
+            &state.pool,
+            Hunt,
+            "hunts",
+            "status != 'paused' ORDER BY created_at DESC"
+        )
     };
 
     Ok(Json(hunts.into_iter().map(HuntResp::from).collect()))
@@ -106,6 +121,7 @@ pub async fn create_hunt(
             "type"        => step.r#type.clone(),
             "latitude"    => step.latitude.clone(),
             "longitude"   => step.longitude.clone(),
+            "awnser"      => step.awnser.clone(),
             "points"      => step.points,
             "created_at"  => *NOW
         );
@@ -134,10 +150,11 @@ pub async fn create_hunt(
 
 pub async fn update_hunt(
     State(state): State<AppState>,
-    OwnedHunt(_hunt): OwnedHunt,
+    OwnedHunt(hunt): OwnedHunt,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateHunt>,
 ) -> ApiResult<impl IntoResponse> {
+    let previous_status = hunt.status.clone();
     let hunt = query_update!(
         &state.pool,
         Hunt,
@@ -156,7 +173,7 @@ pub async fn update_hunt(
         "updated_at"         => Some(*NOW)
     );
 
-    let resp = HuntResp::from(hunt);
+    let resp = HuntResp::from(hunt.clone());
     state.event_handler.publish(
         Event::new(
             event_types::HUNTS_UPDATED,
@@ -166,7 +183,52 @@ pub async fn update_hunt(
         .with_resource_id(id),
     );
 
+    if hunt.status.as_deref() == Some("paused") && previous_status.as_deref() != Some("paused") {
+        if let Err(err) = notify_hunt_paused(&state, &hunt).await {
+            tracing::warn!(error = %err, hunt_id = %hunt.id, "failed to send hunt paused notifications");
+        }
+    }
+
     Ok((StatusCode::ACCEPTED, Json(resp)))
+}
+
+pub async fn pause_hunt(
+    State(state): State<AppState>,
+    OwnedHunt(hunt): OwnedHunt,
+) -> ApiResult<impl IntoResponse> {
+    if hunt.status.as_deref() == Some("paused") {
+        return Ok((StatusCode::OK, Json(HuntResp::from(hunt))));
+    }
+
+    if hunt.status.as_deref() != Some("active") {
+        return Err(ApiError::bad_request("only active hunts can be paused"));
+    }
+
+    let hunt = query_update!(
+        &state.pool,
+        Hunt,
+        "hunts",
+        "id",
+        hunt.id,
+        "status" => Some("paused".to_string()),
+        "updated_at" => Some(*NOW)
+    );
+
+    let resp = HuntResp::from(hunt.clone());
+    state.event_handler.publish(
+        Event::new(
+            event_types::HUNTS_PAUSED,
+            topics::HUNTS,
+            serde_json::to_value(&resp).unwrap_or(serde_json::Value::Null),
+        )
+        .with_resource_id(hunt.id),
+    );
+
+    if let Err(err) = notify_hunt_paused(&state, &hunt).await {
+        tracing::warn!(error = %err, hunt_id = %hunt.id, "failed to send hunt paused notifications");
+    }
+
+    Ok((StatusCode::OK, Json(resp)))
 }
 
 pub async fn delete_hunt(
@@ -261,7 +323,11 @@ pub async fn leave_hunt(
         return Err(ApiError::conflict("have not joined this hunt"));
     }
 
-    let rows = query_delete!(&state.pool, "hunt_participants", "user_id", auth.user.id);
+    let rows = sqlx::query("DELETE FROM hunt_participants WHERE user_id = $1 AND hunt_id = $2")
+        .bind(auth.user.id)
+        .bind(req.hunt_id)
+        .execute(&state.pool)
+        .await?;
     if rows.rows_affected() == 0 {
         return Err(ApiError::not_found("hunt not found"));
     }
@@ -322,4 +388,67 @@ pub async fn get_hunt_participants(
         hunt.id
     );
     Ok(Json(participants))
+}
+
+pub async fn get_hunt_analytics(
+    State(state): State<AppState>,
+    _auth: AuthedUser,
+    Path(id): Path<Uuid>,
+) -> ApiResult<Json<HuntAnalyticsResp>> {
+    let _hunt = query_get!(&state.pool, Hunt, "hunts", "id", id)
+        .ok_or_else(|| ApiError::not_found("hunt not found"))?;
+
+    let participant_count: i64 = query_scale!(
+        &state.pool,
+        "SELECT COUNT(*) FROM hunt_participants WHERE hunt_id = $1",
+        id
+    );
+
+    let completed_hunt_count: i64 = query_scale!(
+        &state.pool,
+        "SELECT COUNT(*) FROM hunt_participants WHERE hunt_id = $1 AND completed_at IS NOT NULL",
+        id
+    );
+
+    let steps: Vec<StepAnalyticsResp> = query_join!(
+        &state.pool,
+        StepAnalyticsResp,
+        r#"
+        SELECT
+            hs.id AS step_id,
+            hs.step_order,
+            hs.title,
+            hs.latitude,
+            hs.longitude,
+            COUNT(hsc.id) FILTER (WHERE hsc.completed_at IS NOT NULL) AS completion_count
+        FROM hunt_steps hs
+        LEFT JOIN hunt_step_completions hsc ON hsc.step_id = hs.id
+        WHERE hs.hunt_id = $1
+        GROUP BY hs.id, hs.step_order, hs.title, hs.latitude, hs.longitude
+        ORDER BY hs.step_order
+        "#,
+        id
+    );
+
+    let user_locations: Vec<UserLocationResp> = query_join!(
+        &state.pool,
+        UserLocationResp,
+        r#"
+        SELECT u.latitude, u.longitude
+        FROM hunt_participants hp
+        JOIN users u ON u.id = hp.user_id
+        WHERE hp.hunt_id = $1
+          AND u.latitude IS NOT NULL
+          AND u.longitude IS NOT NULL
+        "#,
+        id
+    );
+
+    Ok(Json(HuntAnalyticsResp {
+        hunt_id: id,
+        participant_count,
+        completed_hunt_count,
+        steps,
+        user_locations,
+    }))
 }

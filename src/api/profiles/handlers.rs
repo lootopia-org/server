@@ -1,15 +1,21 @@
-use axum::{extract::State, http::StatusCode, response::IntoResponse, Json};
+use axum::{
+    extract::{Path, State},
+    http::StatusCode,
+    response::IntoResponse,
+    Json,
+};
 use chrono::{DateTime, Utc};
+use uuid::Uuid;
 
 use crate::{
     auth::session::{AuthedAdmin, AuthedUser},
     error::{ApiError, ApiResult},
     event::{event::Event, event_types, topics},
     profiles::{
-        dto::{Profile, UpdateProfile},
+        dto::{AdminProfileResp, AdminUpdateProfile, Profile, UpdateProfile},
         models::UserProfiles,
     },
-    query_create, query_delete, query_get, query_list, query_scale, query_update,
+    query_create, query_delete, query_get, query_join, query_scale, query_update,
     utils::contants::NOW,
     AppState,
 };
@@ -17,9 +23,85 @@ use crate::{
 pub async fn list_profiles(
     State(state): State<AppState>,
     _auth: AuthedAdmin,
-) -> ApiResult<Json<Vec<Profile>>> {
-    let profiles = query_list!(&state.pool, UserProfiles, "user_profiles");
-    Ok(Json(profiles.into_iter().map(Into::into).collect()))
+) -> ApiResult<Json<Vec<AdminProfileResp>>> {
+    let profiles: Vec<AdminProfileResp> = query_join!(
+        &state.pool,
+        AdminProfileResp,
+        r#"
+        SELECT
+            up.id,
+            up.user_id,
+            u.username,
+            u.email,
+            up.points,
+            up.level,
+            up.completed_hunts,
+            up.updated_at
+        FROM user_profiles up
+        JOIN users u ON u.id = up.user_id
+        ORDER BY up.updated_at DESC
+        "#,
+    );
+    Ok(Json(profiles))
+}
+
+pub async fn admin_update_profile(
+    State(state): State<AppState>,
+    _auth: AuthedAdmin,
+    Path(user_id): Path<Uuid>,
+    Json(req): Json<AdminUpdateProfile>,
+) -> ApiResult<Json<AdminProfileResp>> {
+    let exists: bool = query_scale!(
+        &state.pool,
+        "SELECT EXISTS(SELECT 1 FROM user_profiles WHERE user_id = $1)",
+        user_id
+    );
+    if !exists {
+        return Err(ApiError::not_found("profile not found"));
+    }
+
+    let profile = query_update!(
+        &state.pool,
+        UserProfiles,
+        "user_profiles",
+        "user_id",
+        user_id,
+        "points"          => req.points,
+        "level"           => req.level,
+        "completed_hunts" => req.completed_hunts,
+        "updated_at"      => Some(*NOW)
+    );
+
+    let resp: AdminProfileResp = query_join!(
+        &state.pool,
+        AdminProfileResp,
+        r#"
+        SELECT
+            up.id,
+            up.user_id,
+            u.username,
+            u.email,
+            up.points,
+            up.level,
+            up.completed_hunts,
+            up.updated_at
+        FROM user_profiles up
+        JOIN users u ON u.id = up.user_id
+        WHERE up.user_id = $1
+        "#,
+        user_id
+    )
+    .into_iter()
+    .next()
+    .ok_or_else(|| ApiError::not_found("profile not found"))?;
+
+    state.event_handler.publish(Event::new(
+        event_types::PROFILE_UPDATED,
+        topics::PROFILE,
+        serde_json::to_value(&Profile::from(profile)).unwrap_or(serde_json::Value::Null),
+    ));
+
+    Ok(Json(resp))
 }
 
 pub async fn get_profile(
@@ -68,7 +150,7 @@ pub async fn update_profile(
         auth.user.id
     );
     if !hunt_belongs {
-        return Err(ApiError::forbidden("hunt does not belong to this user"));
+        return Err(ApiError::bad_request("hunt does not belong to this user"));
     }
 
     let mut tx = state.pool.begin().await?;

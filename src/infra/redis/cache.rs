@@ -29,6 +29,26 @@ impl RedisCache {
         Ok(())
     }
 
+    pub async fn set_with_ttl<T: Serialize>(
+        &self,
+        key: &str,
+        value: &T,
+        ttl_secs: u64,
+    ) -> anyhow::Result<()> {
+        let payload = serde_json::to_string(value).context("serializing value")?;
+        let mut conn = self.conn.clone();
+        conn.set_ex::<_, _, ()>(key, payload, ttl_secs)
+            .await
+            .context("redis SETEX")?;
+        Ok(())
+    }
+
+    pub async fn exists(&self, key: &str) -> anyhow::Result<bool> {
+        let mut conn = self.conn.clone();
+        let exists: bool = conn.exists(key).await.context("redis EXISTS")?;
+        Ok(exists)
+    }
+
     pub async fn delete(&self, keys: &[&str]) -> anyhow::Result<u64> {
         let mut conn = self.conn.clone();
         let removed: u64 = conn.del(keys).await.context("redis DEL")?;

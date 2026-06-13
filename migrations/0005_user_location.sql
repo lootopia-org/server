@@ -1,0 +1,3 @@
+ALTER TABLE users
+  ADD COLUMN latitude  VARCHAR(255),
+  ADD COLUMN longitude VARCHAR(255);

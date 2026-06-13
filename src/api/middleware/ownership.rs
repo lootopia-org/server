@@ -55,9 +55,9 @@ impl FromRequestParts<AppState> for OwnedHuntStep {
             .map_err(|_| ApiError::bad_request("missing path parameter"))?;
 
         let step_id: Uuid = params
-            .get("step_id")
+            .get("id")
             .and_then(|v| Uuid::parse_str(v).ok())
-            .ok_or_else(|| ApiError::bad_request("invalid or missing step_id"))?;
+            .ok_or_else(|| ApiError::bad_request("invalid or missing step id"))?;
 
         let step = query_get!(&state.pool, HuntStep, "hunt_steps", "id", step_id)
             .ok_or_else(|| ApiError::not_found("step not found"))?;

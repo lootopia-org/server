@@ -5,13 +5,14 @@ use axum::{
 
 use crate::{
     api::hunts::hunt_steps::handlers::{
-        complete_step, completed_steps, delete_step, get_step, update_step,
+        complete_step, completed_steps, create_step, delete_step, get_step, update_step,
     },
     AppState,
 };
 
 pub fn router() -> Router<AppState> {
     Router::new()
+        .route("/", post(create_step))
         .route("/{id}", get(get_step))
         .route("/complete/{id}", post(complete_step))
         .route("/{id}", patch(update_step))

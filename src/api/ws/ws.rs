@@ -12,11 +12,16 @@ use futures::{SinkExt, StreamExt};
 use serde::Deserialize;
 use tokio::sync::broadcast::error::RecvError;
 use tracing::warn;
+use uuid::Uuid;
 
-use crate::auth::session::lookup_valid_session;
-use crate::error::ApiError;
-use crate::event::event::Event;
-use crate::AppState;
+use crate::{
+    api::notifications::service::check_proximity,
+    auth::session::lookup_valid_session,
+    error::ApiError,
+    event::event::Event,
+    utils::{contants::NOW, geo::distance_meters},
+    AppState,
+};
 
 #[derive(Debug, Deserialize)]
 pub struct WsAuthQuery {
@@ -29,6 +34,10 @@ enum WsClientMessage {
     Subscribe { topics: Vec<String> },
     Unsubscribe { topics: Vec<String> },
     Ping,
+    UpdateLocation {
+        latitude: String,
+        longitude: String,
+    },
 }
 
 #[derive(Debug, serde::Serialize)]
@@ -58,13 +67,17 @@ pub async fn live_ws(
         return Err(ApiError::unauthorized("mfa verification required"));
     }
 
-    Ok(ws.on_upgrade(move |socket| handle_socket(socket, state)))
+    let user_id = session.0.user_id;
+    Ok(ws.on_upgrade(move |socket| handle_socket(socket, state, user_id)))
 }
 
-async fn handle_socket(socket: WebSocket, state: AppState) {
+async fn handle_socket(socket: WebSocket, state: AppState, user_id: Uuid) {
     let (mut sender, mut receiver) = socket.split();
     let mut events = state.event_handler.subscribe();
-    let mut subscriptions: HashSet<String> = HashSet::from(["*".to_string()]);
+    let mut subscriptions: HashSet<String> = HashSet::from([
+        "*".to_string(),
+        format!("notifications.{user_id}"),
+    ]);
 
     let welcome = WsControlMessage {
         action: "connected",
@@ -80,7 +93,7 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
             incoming = receiver.next() => {
                 match incoming {
                     Some(Ok(Message::Text(text))) => {
-                        if handle_client_message(&text, &mut subscriptions, &mut sender).await.is_err() {
+                        if handle_client_message(&text, &state, user_id, &mut subscriptions, &mut sender).await.is_err() {
                             break;
                         }
                     }
@@ -117,6 +130,8 @@ async fn handle_socket(socket: WebSocket, state: AppState) {
 
 async fn handle_client_message(
     text: &str,
+    state: &AppState,
+    user_id: Uuid,
     subscriptions: &mut HashSet<String>,
     sender: &mut futures::stream::SplitSink<WebSocket, Message>,
 ) -> Result<(), ()> {
@@ -165,9 +180,72 @@ async fn handle_client_message(
             };
             send_json(sender, &reply).await?;
         }
+        WsClientMessage::UpdateLocation {
+            latitude,
+            longitude,
+        } => {
+            if !valid_coordinates(&latitude, &longitude) {
+                let reply = WsControlMessage {
+                    action: "error",
+                    topics: None,
+                    message: Some("invalid latitude or longitude".to_string()),
+                };
+                send_json(sender, &reply).await?;
+                return Ok(());
+            }
+
+            if update_user_location(state, user_id, &latitude, &longitude)
+                .await
+                .is_err()
+            {
+                let reply = WsControlMessage {
+                    action: "error",
+                    topics: None,
+                    message: Some("failed to update location".to_string()),
+                };
+                send_json(sender, &reply).await?;
+                return Ok(());
+            }
+
+            if let Err(err) = check_proximity(state, user_id, &latitude, &longitude).await {
+                warn!(error = %err, user_id = %user_id, "proximity check failed");
+            }
+
+            let reply = WsControlMessage {
+                action: "locationUpdated",
+                topics: None,
+                message: None,
+            };
+            send_json(sender, &reply).await?;
+        }
     }
 
     Ok(())
+}
+
+fn valid_coordinates(latitude: &str, longitude: &str) -> bool {
+    if latitude.trim().is_empty() || longitude.trim().is_empty() {
+        return false;
+    }
+
+    distance_meters(latitude, longitude, latitude, longitude).is_some()
+}
+
+async fn update_user_location(
+    state: &AppState,
+    user_id: Uuid,
+    latitude: &str,
+    longitude: &str,
+) -> Result<(), ()> {
+    sqlx::query("UPDATE users SET latitude = $1, longitude = $2, updated_at = $3 WHERE id = $4")
+        .bind(latitude)
+        .bind(longitude)
+        .bind(*NOW)
+        .bind(user_id)
+        .execute(&state.pool)
+        .await
+        .map(|_| ())
+        .map_err(|_| ())
 }
 
 fn normalize_topic(topic: &str) -> String {

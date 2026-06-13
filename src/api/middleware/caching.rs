@@ -10,6 +10,7 @@ use axum::{
     response::{IntoResponse, Response},
 };
 use http_body_util::BodyExt;
+use uuid::Uuid;
 
 fn derive_cache_keys(pattern: &str, real_path: &str) -> Vec<String> {
     let pat_segs: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
@@ -59,6 +60,22 @@ fn primary_key(pattern: &str, real_path: &str) -> String {
         .unwrap_or_else(|| real_path.to_string())
 }
 
+fn hunt_id_from_path(path: &str) -> Option<String> {
+    let id = path.trim_start_matches('/').split('/').nth(1)?;
+    Uuid::parse_str(id).ok().map(|_| id.to_string())
+}
+
+fn hunt_scoped_cache_keys(path: &str) -> Vec<String> {
+    let Some(hunt_id) = hunt_id_from_path(path) else {
+        return Vec::new();
+    };
+
+    vec![
+        format!("{{hunt}}:{{{hunt_id}}}"),
+        format!("hunt_analytics:{hunt_id}"),
+    ]
+}
+
 pub async fn cache_middleware(
     axum::extract::State(state): axum::extract::State<AppState>,
     req: Request,
@@ -85,10 +102,11 @@ pub async fn cache_middleware(
                 (p, Some(user)) if p == "/profile" => {
                     format!("profile:{}", user.id)
                 }
+                (p, _) if p == "/hunt/{id}/analytics" => hunt_id_from_path(&path)
+                    .map(|id| format!("hunt_analytics:{id}"))
+                    .unwrap_or_else(|| primary_key(&pattern, &path)),
                 _ => primary_key(&pattern, &path),
             };
-
-            tracing::info!(key);
 
             if let Ok(Some(cached)) = state.event_handler.get::<String>(&key).await {
                 return (
@@ -119,7 +137,10 @@ pub async fn cache_middleware(
         }
 
         Method::POST | Method::PATCH | Method::PUT | Method::DELETE => {
-            let keys = derive_cache_keys(&pattern, &path);
+            let mut keys = derive_cache_keys(&pattern, &path);
+            keys.extend(hunt_scoped_cache_keys(&path));
+            keys.push("hunt_analytics".to_string());
+            keys.dedup();
             let response = next.run(req).await;
 
             if response.status().is_success() && !keys.is_empty() {

@@ -11,4 +11,5 @@ pub mod utils;
 pub use api::auth;
 pub use api::hunts;
 pub use api::profiles;
+pub use api::upload;
 pub use state::AppState;

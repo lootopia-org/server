@@ -1,10 +1,9 @@
 use axum::{
     extract::{Query, State},
-    http::{header::SET_COOKIE, HeaderValue},
+    http::{header::SET_COOKIE, HeaderMap, HeaderValue},
     response::IntoResponse,
     Json,
 };
-use axum_extra::extract::CookieJar;
 use chrono::Duration;
 use serde_json::Value;
 use uuid::Uuid;
@@ -23,7 +22,7 @@ use crate::{
         },
         email,
         models::{Credential, EmailToken, PasswordResetToken, Session, User},
-        session::{create_session, AuthedUser},
+        session::{create_session, extract_session_token, AuthedUser},
         webauthn,
     },
     error::{ApiError, ApiResult},
@@ -302,14 +301,11 @@ pub async fn reset_password(
 }
 
 pub async fn mfa_totp(
-    jar: CookieJar,
+    headers: HeaderMap,
     State(state): State<AppState>,
     Json(req): Json<MfaTotpReq>,
 ) -> ApiResult<Json<TokenResp>> {
-    let token = jar
-        .get("session")
-        .map(|c| c.value().to_string())
-        .ok_or(ApiError::unauthorized("token not found"))?;
+    let token = extract_session_token(&headers).ok_or(ApiError::unauthorized("token not found"))?;
     let session = query_get!(&state.pool, Session, "sessions", "token", &token);
 
     let session = match session {
@@ -366,6 +362,8 @@ pub async fn me(State(state): State<AppState>, auth: AuthedUser) -> ApiResult<Js
         email_verified: auth.user.email_verified,
         totp_enabled: auth.user.totp_enabled,
         passkeys,
+        avatar: auth.user.avatar,
+        bio: auth.user.bio,
     }))
 }
 

@@ -18,6 +18,8 @@ pub struct User {
     pub role: String,
     pub avatar: Option<String>,
     pub bio: Option<String>,
+    pub latitude: Option<String>,
+    pub longitude: Option<String>,
     pub created_at: DateTime<Utc>,
     pub updated_at: DateTime<Utc>,
 }

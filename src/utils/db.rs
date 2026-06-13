@@ -167,11 +167,16 @@ macro_rules! query_update {
 
 #[macro_export]
 macro_rules! query_join {
-    ($pool:expr, $model:ty, $sql:expr $(, $arg:expr)* $(,)?) => {{
+    ($pool:expr, $model:ty, $sql:expr $(,)?) => {{
+        sqlx::query_as::<_, $model>($sql)
+            .fetch_all($pool)
+            .await?
+    }};
+    ($pool:expr, $model:ty, $sql:expr, $($arg:expr),+ $(,)?) => {{
         let mut query = sqlx::query_as::<_, $model>($sql);
         $(
             query = query.bind($arg);
-        )*
+        )+
         query.fetch_all($pool).await?
     }};
 }

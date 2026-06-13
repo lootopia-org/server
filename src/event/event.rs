@@ -52,7 +52,8 @@ pub fn topic_channel(topic: &str) -> String {
 }
 
 define_topics! {
-    HUNTS:    "hunts"    => [created, updated, deleted, joined, leave],
-    HUNT_STEPS:    "hunt_steps"    => [complete, update, delete],
-    PROFILE:  "profiles" => [updated]
+    HUNTS:    "hunts"    => [created, updated, deleted, joined, leave, paused],
+    HUNT_STEPS:    "hunt_steps"    => [complete, update, delete, photo_captured],
+    PROFILE:  "profiles" => [updated],
+    NOTIFICATIONS: "notifications" => [proximity, hunt_paused],
 }
