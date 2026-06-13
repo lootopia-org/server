@@ -1,9 +1,7 @@
 use std::marker::PhantomData;
 
 use axum::extract::FromRequestParts;
-use axum::http::header::{AUTHORIZATION, COOKIE};
 use axum::http::request::Parts;
-use axum::http::HeaderMap;
 use chrono::Duration;
 use uuid::Uuid;
 
@@ -30,24 +28,6 @@ pub type AuthedAdmin = Auth<RoleAdmin>;
 pub type AuthedPartner = Auth<RolePartner>;
 pub type AuthedAdminOrPartner = Auth<RoleAdminOrPartener>;
 
-pub fn extract_session_token(headers: &HeaderMap) -> Option<String> {
-    if let Some(cookie_header) = headers.get(COOKIE).and_then(|v| v.to_str().ok()) {
-        if let Some(token) = cookie_header.split(';').map(str::trim).find_map(|pair| {
-            let (k, v) = pair.split_once('=')?;
-            (k == "session").then(|| v.to_string())
-        }) {
-            return Some(token);
-        }
-    }
-
-    headers
-        .get(AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .and_then(|value| value.strip_prefix("Bearer "))
-        .map(str::trim)
-        .filter(|token| !token.is_empty())
-        .map(str::to_string)
-}
 
 pub async fn create_session(
     state: &AppState,
@@ -103,8 +83,20 @@ impl<R: RequiredRole + Send + Sync + 'static> FromRequestParts<AppState> for Aut
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let token = extract_session_token(&parts.headers)
-            .ok_or_else(|| ApiError::unauthorized("missing session token"))?;
+        let cookie_header = parts
+            .headers
+            .get(axum::http::header::COOKIE)
+            .and_then(|v| v.to_str().ok())
+            .ok_or_else(|| ApiError::unauthorized("missing cookie header"))?;
+
+        let token = cookie_header
+            .split(';')
+            .map(|p| p.trim())
+            .find_map(|pair| {
+                let (k, v) = pair.split_once('=')?;
+                (k == "session").then(|| v.to_string())
+            })
+            .ok_or_else(|| ApiError::unauthorized("missing session cookie"))?;
 
         let (session, user) = lookup_valid_session(state, &token)
             .await?
