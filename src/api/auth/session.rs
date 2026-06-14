@@ -83,14 +83,18 @@ pub fn session_token_from_parts(parts: &Parts) -> Result<String, ApiError> {
         .and_then(|v| v.to_str().ok())
         .ok_or_else(|| ApiError::unauthorized("missing session cookie"))?;
 
-    cookie_header
-        .split(';')
-        .map(|p| p.trim())
-        .find_map(|pair| {
-            let (k, v) = pair.split_once('=')?;
-            (k == "session").then(|| v.to_string())
-        })
+    session_cookie_value(cookie_header)
         .ok_or_else(|| ApiError::unauthorized("missing session cookie"))
+}
+
+fn session_cookie_value(cookie_header: &str) -> Option<String> {
+    let read = |name: &str| {
+        cookie_header.split(';').map(str::trim).find_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            (k == name).then(|| v.to_string())
+        })
+    };
+    read("session").or_else(|| read("authToken"))
 }
 
 pub async fn lookup_valid_session(

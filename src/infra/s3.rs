@@ -187,10 +187,10 @@ impl S3Storage {
         }
 
         if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
-            let key = self
-                .key_from_url(trimmed)
-                .ok_or_else(|| anyhow::anyhow!("unsupported image url"))?;
-            return self.get_object_bytes(&key).await;
+            if let Some(key) = self.resolve_object_key(trimmed) {
+                return self.get_object_bytes(&key).await;
+            }
+            anyhow::bail!("unsupported image url");
         }
 
         if trimmed.contains('/') {
@@ -198,6 +198,23 @@ impl S3Storage {
         }
 
         decode_base64_bytes(trimmed)
+    }
+
+    fn resolve_object_key(&self, reference: &str) -> Option<String> {
+        if let Some(key) = self.key_from_url(reference) {
+            return Some(key);
+        }
+
+        let path = reference.split(['?', '#']).next()?;
+        let marker = format!("/{}/", self.key_prefix);
+        if let Some(rest) = path.split(&marker).nth(1) {
+            let suffix = rest.trim_start_matches('/');
+            if !suffix.is_empty() {
+                return Some(format!("{}/{}", self.key_prefix, suffix));
+            }
+        }
+
+        None
     }
 
     async fn get_object_bytes(&self, key: &str) -> anyhow::Result<Vec<u8>> {

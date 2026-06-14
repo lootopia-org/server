@@ -59,6 +59,7 @@ pub async fn live_ws(
     let token = jar
         .get("session")
         .map(|c| c.value().to_string())
+        .or_else(|| jar.get("authToken").map(|c| c.value().to_string()))
         .or(auth_query.token)
         .filter(|value| !value.trim().is_empty())
         .ok_or(ApiError::unauthorized("token not found"))?;

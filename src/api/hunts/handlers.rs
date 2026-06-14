@@ -148,11 +148,14 @@ pub async fn create_hunt(
         .invalidate_hunt_response_cache(hunt_id)
         .await;
 
-    state.event_handler.publish(Event::new(
-        event_types::HUNTS_CREATED,
-        topics::HUNTS,
-        serde_json::to_value(&detail).unwrap_or(serde_json::Value::Null),
-    ));
+    state.event_handler.publish(
+        Event::new(
+            event_types::HUNTS_CREATED,
+            topics::HUNTS,
+            serde_json::to_value(&detail).unwrap_or(serde_json::Value::Null),
+        )
+        .with_resource_id(hunt_id),
+    );
 
     Ok((StatusCode::CREATED, Json(detail)))
 }
