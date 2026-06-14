@@ -73,6 +73,7 @@ pub async fn create_step(
         "longitude"   => req.longitude.clone(),
         "awnser"      => req.awnser.clone(),
         "points"      => req.points,
+        "scan_in_ar"  => req.scan_in_ar.unwrap_or(false),
         "created_at"  => *NOW
     );
 
@@ -243,6 +244,7 @@ pub async fn update_step(
         "longitude"   => req.longitude,
         "awnser"      => req.awnser,
         "points"      => req.points,
+        "scan_in_ar"  => req.scan_in_ar,
     );
 
     let resp = HuntStepResp::from(step);
@@ -346,6 +348,7 @@ pub async fn sync_hunt_steps(
                 "longitude"   => Some(item.longitude.clone()),
                 "awnser"      => Some(item.awnser.clone()),
                 "points"      => Some(item.points),
+                "scan_in_ar"  => Some(item.scan_in_ar.unwrap_or(false)),
             );
         } else {
             query_create!(
@@ -361,6 +364,7 @@ pub async fn sync_hunt_steps(
                 "longitude"   => item.longitude.clone(),
                 "awnser"      => item.awnser.clone(),
                 "points"      => item.points,
+                "scan_in_ar"  => item.scan_in_ar.unwrap_or(false),
                 "created_at"  => *NOW
             );
         }

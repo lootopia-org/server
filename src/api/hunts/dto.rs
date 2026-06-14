@@ -49,6 +49,7 @@ pub struct CreateHuntStep {
     pub longitude: Option<String>,
     pub awnser: Option<String>,
     pub points: Option<f32>,
+    pub scan_in_ar: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]

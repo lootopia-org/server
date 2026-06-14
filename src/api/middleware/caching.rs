@@ -106,12 +106,24 @@ pub async fn invalidate_user_profile_cache(state: &AppState, user_id: Uuid) {
     let _ = state.event_handler.delete(&[&key]).await;
 }
 
-fn joined_cache_key(user_id: Uuid) -> String {
+pub fn joined_cache_key(user_id: Uuid) -> String {
     format!("joined:{}", user_id)
+}
+
+pub async fn invalidate_joined_hunts_cache(state: &AppState, user_id: Uuid) {
+    let keys = [
+        joined_cache_key(user_id),
+        "joined".to_string(),
+        "hunt_participants".to_string(),
+    ];
+    let key_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+    let _ = state.event_handler.delete(&key_refs).await;
 }
 
 fn should_skip_response_cache(path: &str) -> bool {
     path.contains("/step-photo-sessions")
+        || path.ends_with("/joined")
+        || path.ends_with("/participants")
 }
 
 fn is_profile_request(path: &str, pattern: &str) -> bool {

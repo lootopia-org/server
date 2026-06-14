@@ -15,6 +15,7 @@ pub struct HuntStepResp {
     pub longitude: Option<String>,
     pub points: Option<i32>,
     pub awnser: Option<String>,
+    pub scan_in_ar: bool,
 }
 
 #[derive(Debug, Deserialize)]
@@ -29,6 +30,7 @@ pub struct CreateStepReq {
     pub longitude: Option<String>,
     pub awnser: Option<String>,
     pub points: Option<i32>,
+    pub scan_in_ar: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +44,7 @@ pub struct UpdateHuntStep {
     pub longitude: Option<String>,
     pub awnser: Option<String>,
     pub points: Option<i32>,
+    pub scan_in_ar: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -56,6 +59,7 @@ pub struct SyncHuntStepItem {
     pub longitude: Option<String>,
     pub awnser: Option<String>,
     pub points: Option<i32>,
+    pub scan_in_ar: Option<bool>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -80,4 +84,5 @@ impl_from!(HuntStep => HuntStepResp {
     longitude,
     points,
     awnser,
+    scan_in_ar,
 });

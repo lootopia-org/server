@@ -23,5 +23,6 @@ pub struct HuntStep {
     pub latitude: Option<String>,
     pub longitude: Option<String>,
     pub points: Option<i32>,
+    pub scan_in_ar: bool,
     pub created_at: DateTime<Utc>,
 }

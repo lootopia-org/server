@@ -12,7 +12,10 @@ use crate::{
             dto::HuntStepResp,
             models::{HuntStep, HuntStepCompletion},
         },
-        middleware::ownership::OwnedHunt,
+        middleware::{
+            caching::invalidate_joined_hunts_cache,
+            ownership::OwnedHunt,
+        },
         notifications::service::notify_hunt_paused,
     },
     auth::session::{AuthedAdminOrPartner, AuthedUser},
@@ -123,6 +126,7 @@ pub async fn create_hunt(
             "longitude"   => step.longitude.clone(),
             "awnser"      => step.awnser.clone(),
             "points"      => step.points,
+            "scan_in_ar"  => step.scan_in_ar.unwrap_or(false),
             "created_at"  => *NOW
         );
         query_create!(&mut *tx, HuntStepCompletion, "hunt_step_completions", 
@@ -303,6 +307,7 @@ pub async fn join_hunt(
         .event_handler
         .invalidate_hunt_response_cache(req.hunt_id)
         .await;
+    invalidate_joined_hunts_cache(&state, auth.user.id).await;
 
     state.event_handler.publish(
         Event::new(
@@ -357,6 +362,7 @@ pub async fn leave_hunt(
         .event_handler
         .invalidate_hunt_response_cache(req.hunt_id)
         .await;
+    invalidate_joined_hunts_cache(&state, auth.user.id).await;
 
     state.event_handler.publish(
         Event::new(
