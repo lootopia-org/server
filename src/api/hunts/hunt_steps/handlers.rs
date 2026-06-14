@@ -175,7 +175,7 @@ pub async fn complete_step(
             }
         }
         _ => {
-            if req.answer != step.awnser {
+            if !crate::utils::awnser::step_answers_match(&req.answer, &step.awnser) {
                 return Err(ApiError::bad_request("this was not the correct answer"));
             }
         }
