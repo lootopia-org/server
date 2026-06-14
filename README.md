@@ -299,6 +299,24 @@ database leak does not yield usable reset links.
 
 ---
 
+## Redis response cache
+
+Successful GET responses for hunts, profiles, and related routes are cached in
+Redis with a **10-minute TTL** (`RESPONSE_CACHE_TTL_SECS` in
+`api/middleware/caching.rs`). Mutations invalidate the relevant keys automatically.
+
+If you see stale hunt steps or participant lists after upgrading cache logic,
+flush the affected keys (or all hunt-related keys):
+
+```bash
+redis-cli DEL '{hunt}:{HUNT_UUID}' hunt_participants hunt_participants:{HUNT_UUID} joined joined:{USER_UUID}
+```
+
+Legacy global keys (`hunt_participants`, `joined`) may still hold data from before
+per-hunt/per-user scoping was introduced.
+
+---
+
 ## Requirements
 
 - Rust 1.88+ (tested with 1.95) and Cargo.

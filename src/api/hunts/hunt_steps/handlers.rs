@@ -21,6 +21,7 @@ use crate::{
     auth::session::{AuthedAdminOrPartner, AuthedUser},
     error::{ApiError, ApiResult},
     event::{event::Event, event_types, topics},
+    api::middleware::caching::invalidate_hunt_step_caches,
     hunts::{
         dto::HuntDetail,
         models::Hunt,
@@ -78,6 +79,8 @@ pub async fn create_step(
         )
         .with_resource_id(resp.id),
     );
+
+    invalidate_hunt_step_caches(&state, req.hunt_id).await;
 
     Ok((StatusCode::CREATED, Json(resp)))
 }
@@ -171,11 +174,13 @@ pub async fn complete_step(
         }
     }
 
+    let hunt_id = step.hunt_id;
+
     query_create!(
         &state.pool,
         HuntStepCompletion,
         "hunt_step_completions",
-        "hunt_id" => step.hunt_id,
+        "hunt_id" => hunt_id,
         "user_id" => auth.user.id,
         "step_id" => id,
         "completed_at" => *NOW
@@ -191,15 +196,18 @@ pub async fn complete_step(
         .with_resource_id(id),
     );
 
+    invalidate_hunt_step_caches(&state, hunt_id).await;
+
     Ok(Json(resp))
 }
 
 pub async fn update_step(
     State(state): State<AppState>,
-    OwnedHuntStep(_step): OwnedHuntStep,
+    OwnedHuntStep(existing): OwnedHuntStep,
     Path(id): Path<Uuid>,
     Json(req): Json<UpdateHuntStep>,
 ) -> ApiResult<Json<HuntStepResp>> {
+    let hunt_id = existing.hunt_id;
     let step = query_update!(
         &state.pool,
         HuntStep,
@@ -226,14 +234,17 @@ pub async fn update_step(
         .with_resource_id(id),
     );
 
+    invalidate_hunt_step_caches(&state, hunt_id).await;
+
     Ok(Json(resp))
 }
 
 pub async fn delete_step(
     State(state): State<AppState>,
-    OwnedHuntStep(_step): OwnedHuntStep,
+    OwnedHuntStep(step): OwnedHuntStep,
     Path(id): Path<Uuid>,
 ) -> ApiResult<StatusCode> {
+    let hunt_id = step.hunt_id;
     let rows = query_delete!(&state.pool, "hunt_steps", "id", id);
     if rows.rows_affected() == 0 {
         return Err(ApiError::not_found("step not found"));
@@ -247,6 +258,8 @@ pub async fn delete_step(
         )
         .with_resource_id(id),
     );
+
+    invalidate_hunt_step_caches(&state, hunt_id).await;
 
     Ok(StatusCode::NO_CONTENT)
 }
@@ -355,6 +368,8 @@ pub async fn sync_hunt_steps(
         )
         .with_resource_id(hunt_id),
     );
+
+    invalidate_hunt_step_caches(&state, hunt_id).await;
 
     Ok(Json(detail))
 }

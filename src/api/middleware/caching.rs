@@ -1,4 +1,5 @@
 use crate::{
+    api::hunts::models::HuntParticipant,
     auth::{models::User, session::AuthedUser},
     AppState,
 };
@@ -11,6 +12,9 @@ use axum::{
 };
 use http_body_util::BodyExt;
 use uuid::Uuid;
+
+/// TTL for cached GET JSON responses (seconds).
+pub const RESPONSE_CACHE_TTL_SECS: u64 = 600;
 
 fn derive_cache_keys(pattern: &str, real_path: &str) -> Vec<String> {
     let pat_segs: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
@@ -146,6 +150,32 @@ fn get_cache_key(path: &str, pattern: &str, user: Option<&User>) -> String {
     hunt_analytics_cache_key(path, pattern).unwrap_or_else(|| primary_key(pattern, path))
 }
 
+/// Clears hunt detail/analytics/participants and joined-hunt caches after step changes.
+/// After deploying cache-key fixes, flush legacy keys in Redis if stale data persists:
+/// `{hunt}:{huntId}`, `hunt_participants`, `hunt_participants:{huntId}`, `joined`, `joined:{userId}`.
+pub async fn invalidate_hunt_step_caches(state: &AppState, hunt_id: Uuid) {
+    state
+        .event_handler
+        .invalidate_hunt_response_cache(hunt_id)
+        .await;
+
+    let participants = sqlx::query_as::<_, HuntParticipant>(
+        "SELECT id, user_id, hunt_id, points_awarded, joined_at, completed_at FROM hunt_participants WHERE hunt_id = $1",
+    )
+    .bind(hunt_id)
+    .fetch_all(&state.pool)
+    .await
+    .unwrap_or_default();
+
+    let mut keys = vec!["joined".to_string()];
+    for participant in participants {
+        keys.push(joined_cache_key(participant.user_id));
+    }
+
+    let key_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+    let _ = state.event_handler.delete(&key_refs).await;
+}
+
 fn invalidate_keys_for_mutation(path: &str, pattern: &str, user: Option<&User>) -> Vec<String> {
     let mut keys = derive_cache_keys(pattern, path);
     keys.extend(hunt_scoped_cache_keys(path));
@@ -215,7 +245,10 @@ pub async fn cache_middleware(
                         let bytes: Bytes = collected.to_bytes();
                         let body_str = String::from_utf8_lossy(&bytes).to_string();
 
-                        let _ = state.event_handler.set(&key, &body_str).await;
+                        let _ = state
+                            .event_handler
+                            .set_with_ttl(&key, &body_str, RESPONSE_CACHE_TTL_SECS)
+                            .await;
 
                         Response::from_parts(parts, Body::from(bytes))
                     }
