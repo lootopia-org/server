@@ -66,13 +66,19 @@ fn hunt_id_from_path(path: &str) -> Option<String> {
 }
 
 fn hunt_scoped_cache_keys(path: &str) -> Vec<String> {
-    let Some(hunt_id) = hunt_id_from_path(path) else {
-        return Vec::new();
-    };
+    hunt_id_from_path(path)
+        .map(|hunt_id| hunt_response_cache_keys(&hunt_id))
+        .unwrap_or_default()
+}
 
+/// Redis keys for hunt-scoped GET responses (detail, analytics, participants).
+pub fn hunt_response_cache_keys(hunt_id: &str) -> Vec<String> {
     vec![
         format!("{{hunt}}:{{{hunt_id}}}"),
         format!("hunt_analytics:{hunt_id}"),
+        format!("hunt_participants:{hunt_id}"),
+        // Legacy key shared across all hunts before per-hunt scoping.
+        "hunt_participants".to_string(),
     ]
 }
 
@@ -115,6 +121,14 @@ fn hunt_analytics_cache_key(path: &str, pattern: &str) -> Option<String> {
     }
 }
 
+fn hunt_participants_cache_key(path: &str, pattern: &str) -> Option<String> {
+    if pattern.ends_with("/participants") || path.ends_with("/participants") {
+        hunt_id_from_path(path).map(|id| format!("hunt_participants:{id}"))
+    } else {
+        None
+    }
+}
+
 fn get_cache_key(path: &str, pattern: &str, user: Option<&User>) -> String {
     if let Some(user) = user {
         if is_profile_request(path, pattern) {
@@ -123,6 +137,10 @@ fn get_cache_key(path: &str, pattern: &str, user: Option<&User>) -> String {
         if is_joined_hunts_request(path, pattern) {
             return joined_cache_key(user.id);
         }
+    }
+
+    if let Some(key) = hunt_participants_cache_key(path, pattern) {
+        return key;
     }
 
     hunt_analytics_cache_key(path, pattern).unwrap_or_else(|| primary_key(pattern, path))
@@ -143,6 +161,8 @@ fn invalidate_keys_for_mutation(path: &str, pattern: &str, user: Option<&User>) 
             keys.push(joined_cache_key(user.id));
             // Legacy shared key used before per-user scoping.
             keys.push("joined".to_string());
+            // Participants list changes on join/leave; hunt id is only in the body.
+            keys.push("hunt_participants".to_string());
         }
     }
 

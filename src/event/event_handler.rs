@@ -8,6 +8,9 @@ use serde::Serialize;
 use tokio::sync::broadcast;
 use tracing::{error, warn};
 
+use uuid::Uuid;
+
+use crate::api::middleware::caching::hunt_response_cache_keys;
 use crate::event::event::{global_channel, Event};
 use crate::infra::kafka::{KafkaConfig, KafkaConsumer, KafkaProducer};
 use crate::infra::redis::{connect as connect_redis, RedisCache, RedisConfig, RedisPubSub};
@@ -145,6 +148,14 @@ impl EventHandler {
 
     pub async fn delete(&self, keys: &[&str]) -> anyhow::Result<u64> {
         self.cache.delete(keys).await
+    }
+
+    /// Clears cached hunt detail, analytics, and participants for one hunt.
+    pub async fn invalidate_hunt_response_cache(&self, hunt_id: Uuid) {
+        let mut keys = hunt_response_cache_keys(&hunt_id.to_string());
+        keys.push("hunt".to_string());
+        let key_refs: Vec<&str> = keys.iter().map(|s| s.as_str()).collect();
+        let _ = self.delete(&key_refs).await;
     }
 
     pub async fn cached<T, F, Fut>(&self, key: &str, f: F) -> anyhow::Result<T>

@@ -200,6 +200,11 @@ pub async fn update_profile(
 
     tx.commit().await?;
 
+    state
+        .event_handler
+        .invalidate_hunt_response_cache(req.hunt_id)
+        .await;
+
     let resp = Profile::from(profile);
     state.event_handler.publish(Event::new(
         event_types::PROFILE_UPDATED,

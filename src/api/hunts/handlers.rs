@@ -283,6 +283,11 @@ pub async fn join_hunt(
         "joined_at" => *NOW
     );
 
+    state
+        .event_handler
+        .invalidate_hunt_response_cache(req.hunt_id)
+        .await;
+
     state.event_handler.publish(
         Event::new(
             event_types::HUNTS_JOINED,
@@ -331,6 +336,11 @@ pub async fn leave_hunt(
     if rows.rows_affected() == 0 {
         return Err(ApiError::not_found("hunt not found"));
     }
+
+    state
+        .event_handler
+        .invalidate_hunt_response_cache(req.hunt_id)
+        .await;
 
     state.event_handler.publish(
         Event::new(
