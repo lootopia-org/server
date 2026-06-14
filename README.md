@@ -185,7 +185,7 @@ require a specific role (or admin-or-partner ownership of a resource).
 |---|---|---|---|
 | `GET  /profile` | – | player+ | Get the current user's profile |
 | `POST /profile` | – | player+ | Create a profile (409 if one already exists) |
-| `PATCH /profile` | `{huntId}` | player+ | Mark a joined hunt complete; awards points from hunt steps |
+| `PATCH /profile` | `{huntId}` | player+ | Mark a joined hunt complete after all steps (increments completed hunts; points are awarded per step) |
 | `DELETE /profile` | – | player+ | Delete the current user's profile |
 | `GET  /profile/list` | – | admin | List all profiles |
 

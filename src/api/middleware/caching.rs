@@ -98,7 +98,12 @@ pub fn hunt_response_cache_keys(hunt_id: &str) -> Vec<String> {
 }
 
 fn profile_cache_key(user_id: Uuid) -> String {
-    format!("profile:{}", user_id)
+    format!("profile:{user_id}")
+}
+
+pub async fn invalidate_user_profile_cache(state: &AppState, user_id: Uuid) {
+    let key = profile_cache_key(user_id);
+    let _ = state.event_handler.delete(&[&key]).await;
 }
 
 fn joined_cache_key(user_id: Uuid) -> String {

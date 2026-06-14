@@ -8,14 +8,16 @@ use chrono::{DateTime, Utc};
 use uuid::Uuid;
 
 use crate::{
+    api::middleware::caching::invalidate_user_profile_cache,
     auth::session::{AuthedAdmin, AuthedUser},
     error::{ApiError, ApiResult},
     event::{event::Event, event_types, topics},
     profiles::{
         dto::{AdminProfileResp, AdminUpdateProfile, Profile, UpdateProfile},
         models::UserProfiles,
+        service::{hunt_steps_all_completed, maybe_mark_hunt_completed},
     },
-    query_create, query_delete, query_get, query_join, query_scale, query_update,
+    query_delete, query_get, query_join, query_scale, query_update,
     utils::contants::NOW,
     AppState,
 };
@@ -134,15 +136,6 @@ pub async fn update_profile(
         return Err(ApiError::not_found("hunt not found or not available"));
     }
 
-    let hunt_points: i32 = query_scale!(
-        &state.pool,
-        "SELECT COALESCE(SUM(points), 0)::int FROM hunt_steps WHERE hunt_id = $1",
-        &req.hunt_id
-    );
-    if hunt_points == 0 {
-        return Err(ApiError::not_found("hunt not found or has no steps"));
-    }
-
     let hunt_belongs: bool = query_scale!(
         &state.pool,
         "SELECT EXISTS(SELECT 1 FROM hunt_participants WHERE hunt_id = $1 AND user_id = $2)",
@@ -153,6 +146,10 @@ pub async fn update_profile(
         return Err(ApiError::bad_request("hunt does not belong to this user"));
     }
 
+    if !hunt_steps_all_completed(&state.pool, auth.user.id, req.hunt_id).await? {
+        return Err(ApiError::bad_request("complete all steps before finishing the hunt"));
+    }
+
     let mut tx = state.pool.begin().await?;
 
     let completed_at: Option<DateTime<Utc>> = query_scale!(
@@ -161,12 +158,8 @@ pub async fn update_profile(
         auth.user.id,
         &req.hunt_id
     );
-    if completed_at.is_some() {
-        tx.rollback().await?;
-        return Err(ApiError::conflict("hunt already completed"));
-    }
 
-    let current = query_get!(
+    let profile = query_get!(
         &mut *tx,
         UserProfiles,
         "user_profiles",
@@ -175,28 +168,11 @@ pub async fn update_profile(
     )
     .ok_or_else(|| ApiError::not_found("User profile not found"))?;
 
-    let new_points = current.points + hunt_points;
-    let new_level = new_points as f32 / 100.0;
-    let new_hunts = current.completed_hunts + 1;
-
-    let profile = query_update!(
-        &mut *tx,
-        UserProfiles,
-        "user_profiles",
-        "user_id",
-        auth.user.id,
-        "points"          => Some(new_points),
-        "level"           => Some(new_level),
-        "completed_hunts" => Some(new_hunts),
-        "updated_at"      => Some(*NOW)
-    );
-
-    query_create!(&mut *tx, "hunt_participants",
-        "user_id" => auth.user.id,
-        "hunt_id" => &req.hunt_id,
-        "points_awarded" => hunt_points,
-        "completed_at" => *NOW
-    );
+    let profile = if completed_at.is_some() {
+        profile
+    } else {
+        maybe_mark_hunt_completed(&mut tx, auth.user.id, req.hunt_id, profile).await?
+    };
 
     tx.commit().await?;
 
@@ -204,6 +180,7 @@ pub async fn update_profile(
         .event_handler
         .invalidate_hunt_response_cache(req.hunt_id)
         .await;
+    invalidate_user_profile_cache(&state, auth.user.id).await;
 
     let resp = Profile::from(profile);
     state.event_handler.publish(Event::new(

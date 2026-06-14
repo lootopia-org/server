@@ -16,12 +16,18 @@ use crate::{
             },
             live_ops::handlers::load_step_override,
         },
-        middleware::ownership::{OwnedHunt, OwnedHuntStep},
+        middleware::{
+            caching::{invalidate_user_profile_cache, invalidate_hunt_step_caches},
+            ownership::{OwnedHunt, OwnedHuntStep},
+        },
+        profiles::{
+            dto::Profile,
+            service::{award_step_points, maybe_mark_hunt_completed},
+        },
     },
     auth::session::{AuthedAdminOrPartner, AuthedUser},
     error::{ApiError, ApiResult},
     event::{event::Event, event_types, topics},
-    api::middleware::caching::invalidate_hunt_step_caches,
     hunts::{
         dto::HuntDetail,
         models::Hunt,
@@ -175,9 +181,12 @@ pub async fn complete_step(
     }
 
     let hunt_id = step.hunt_id;
+    let step_points = step.points.unwrap_or(0).max(0);
+
+    let mut tx = state.pool.begin().await?;
 
     query_create!(
-        &state.pool,
+        &mut *tx,
         HuntStepCompletion,
         "hunt_step_completions",
         "hunt_id" => hunt_id,
@@ -185,6 +194,11 @@ pub async fn complete_step(
         "step_id" => id,
         "completed_at" => *NOW
     );
+
+    let mut profile = award_step_points(&mut tx, auth.user.id, hunt_id, step_points).await?;
+    profile = maybe_mark_hunt_completed(&mut tx, auth.user.id, hunt_id, profile).await?;
+
+    tx.commit().await?;
 
     let resp = HuntStepResp::from(step);
     state.event_handler.publish(
@@ -195,6 +209,13 @@ pub async fn complete_step(
         )
         .with_resource_id(id),
     );
+
+    invalidate_user_profile_cache(&state, auth.user.id).await;
+    state.event_handler.publish(Event::new(
+        event_types::PROFILE_UPDATED,
+        topics::PROFILE,
+        serde_json::to_value(Profile::from(profile)).unwrap_or(serde_json::Value::Null),
+    ));
 
     invalidate_hunt_step_caches(&state, hunt_id).await;
 
