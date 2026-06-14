@@ -25,7 +25,8 @@ pub struct UploadImageQuery {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ViewImageQuery {
-    pub url: String,
+    pub url: Option<String>,
+    pub key: Option<String>,
 }
 
 pub async fn view_image(
@@ -33,16 +34,22 @@ pub async fn view_image(
     _auth: AuthedUser,
     Query(query): Query<ViewImageQuery>,
 ) -> ApiResult<Response> {
-    let reference = query.url.trim();
-    if reference.is_empty() {
-        return Err(ApiError::bad_request("url is required"));
-    }
+    let reference = query
+        .key
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .or_else(|| query.url.as_deref().map(str::trim).filter(|value| !value.is_empty()))
+        .ok_or_else(|| ApiError::bad_request("url or key is required"))?;
 
     let bytes = state
         .s3
         .read_stored_image(reference)
         .await
-        .map_err(|_| ApiError::not_found("image not found"))?;
+        .map_err(|err| {
+            tracing::warn!(error = %err, reference, "failed to read stored image");
+            ApiError::not_found("image not found")
+        })?;
 
     let content_type = content_type_for_reference(reference);
 

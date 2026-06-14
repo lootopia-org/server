@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use axum::extract::FromRequestParts;
-use axum::http::request::Parts;
+use axum::http::{header, request::Parts};
 use chrono::Duration;
 use uuid::Uuid;
 
@@ -62,6 +62,37 @@ pub async fn create_session(
     Ok(token)
 }
 
+/// Session JWT from `Authorization: Bearer` (mobile) or `session` cookie (web).
+pub fn session_token_from_parts(parts: &Parts) -> Result<String, ApiError> {
+    if let Some(auth) = parts
+        .headers
+        .get(header::AUTHORIZATION)
+        .and_then(|value| value.to_str().ok())
+    {
+        if let Some(token) = auth.strip_prefix("Bearer ") {
+            let token = token.trim();
+            if !token.is_empty() {
+                return Ok(token.to_string());
+            }
+        }
+    }
+
+    let cookie_header = parts
+        .headers
+        .get(header::COOKIE)
+        .and_then(|v| v.to_str().ok())
+        .ok_or_else(|| ApiError::unauthorized("missing session cookie"))?;
+
+    cookie_header
+        .split(';')
+        .map(|p| p.trim())
+        .find_map(|pair| {
+            let (k, v) = pair.split_once('=')?;
+            (k == "session").then(|| v.to_string())
+        })
+        .ok_or_else(|| ApiError::unauthorized("missing session cookie"))
+}
+
 pub async fn lookup_valid_session(
     state: &AppState,
     token: &str,
@@ -83,20 +114,7 @@ impl<R: RequiredRole + Send + Sync + 'static> FromRequestParts<AppState> for Aut
         parts: &mut Parts,
         state: &AppState,
     ) -> Result<Self, Self::Rejection> {
-        let cookie_header = parts
-            .headers
-            .get(axum::http::header::COOKIE)
-            .and_then(|v| v.to_str().ok())
-            .ok_or_else(|| ApiError::unauthorized("missing cookie header"))?;
-
-        let token = cookie_header
-            .split(';')
-            .map(|p| p.trim())
-            .find_map(|pair| {
-                let (k, v) = pair.split_once('=')?;
-                (k == "session").then(|| v.to_string())
-            })
-            .ok_or_else(|| ApiError::unauthorized("missing session cookie"))?;
+        let token = session_token_from_parts(parts)?;
 
         let (session, user) = lookup_valid_session(state, &token)
             .await?
