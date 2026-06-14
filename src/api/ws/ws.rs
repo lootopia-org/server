@@ -3,7 +3,7 @@ use std::collections::HashSet;
 use axum::{
     extract::{
         ws::{Message, WebSocket, WebSocketUpgrade},
-        State,
+        Query, State,
     },
     response::IntoResponse,
 };
@@ -54,10 +54,13 @@ pub async fn live_ws(
     ws: WebSocketUpgrade,
     State(state): State<AppState>,
     jar: CookieJar,
+    Query(auth_query): Query<WsAuthQuery>,
 ) -> Result<impl IntoResponse, ApiError> {
     let token = jar
         .get("session")
         .map(|c| c.value().to_string())
+        .or(auth_query.token)
+        .filter(|value| !value.trim().is_empty())
         .ok_or(ApiError::unauthorized("token not found"))?;
     let session = lookup_valid_session(&state, &token)
         .await?

@@ -351,7 +351,7 @@ pub async fn leave_hunt(
 pub async fn hunts_in_progrss(
     State(state): State<AppState>,
     auth: AuthedUser,
-) -> ApiResult<Json<Vec<HuntResp>>> {
+) -> ApiResult<Json<Vec<HuntDetail>>> {
     let hunts: Vec<Hunt> = query_list!(
         &state.pool,
         Hunt,
@@ -359,7 +359,17 @@ pub async fn hunts_in_progrss(
         "id IN (SELECT hunt_id FROM hunt_participants WHERE user_id = $1 AND completed_at IS NULL)",
         auth.user.id
     );
-    Ok(Json(hunts.into_iter().map(HuntResp::from).collect()))
+
+    let mut details = Vec::with_capacity(hunts.len());
+    for hunt in hunts {
+        let steps = hunt_steps(&state, hunt.id).await?;
+        details.push(HuntDetail {
+            hunt: hunt.into(),
+            steps,
+        });
+    }
+
+    Ok(Json(details))
 }
 
 pub async fn get_hunt_participants(
