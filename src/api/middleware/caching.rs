@@ -124,6 +124,7 @@ fn should_skip_response_cache(path: &str) -> bool {
     path.contains("/step-photo-sessions")
         || path.ends_with("/joined")
         || path.ends_with("/participants")
+        || path.starts_with("/upload/image/view")
 }
 
 fn is_profile_request(path: &str, pattern: &str) -> bool {
@@ -277,6 +278,18 @@ pub async fn cache_middleware(
             let response = next.run(req).await;
             if response.status().is_success() {
                 let (parts, body) = response.into_parts();
+                let content_type = parts
+                    .headers
+                    .get("content-type")
+                    .and_then(|value| value.to_str().ok())
+                    .unwrap_or_default()
+                    .to_ascii_lowercase();
+
+                // Only cache JSON API payloads — binary/image bodies must not be UTF-8 stringified.
+                if !content_type.starts_with("application/json") {
+                    return Response::from_parts(parts, body);
+                }
+
                 match body.collect().await {
                     Ok(collected) => {
                         let bytes: Bytes = collected.to_bytes();
