@@ -37,21 +37,27 @@ pub async fn view_image(
     let reference = query
         .key
         .as_deref()
-        .map(str::trim)
+        .map(decode_image_reference)
         .filter(|value| !value.is_empty())
-        .or_else(|| query.url.as_deref().map(str::trim).filter(|value| !value.is_empty()))
+        .or_else(|| {
+            query
+                .url
+                .as_deref()
+                .map(decode_image_reference)
+                .filter(|value| !value.is_empty())
+        })
         .ok_or_else(|| ApiError::bad_request("url or key is required"))?;
 
     let bytes = state
         .s3
-        .read_stored_image(reference)
+        .read_stored_image(&reference)
         .await
         .map_err(|err| {
-            tracing::warn!(error = %err, reference, "failed to read stored image");
+            tracing::warn!(error = %err, reference = %reference, "failed to read stored image");
             ApiError::not_found("image not found")
         })?;
 
-    let content_type = content_type_for_reference(reference);
+    let content_type = content_type_for_reference(&reference);
 
     Response::builder()
         .status(StatusCode::OK)
@@ -59,6 +65,10 @@ pub async fn view_image(
         .header(header::CACHE_CONTROL, "private, max-age=300")
         .body(Body::from(bytes))
         .map_err(|err| ApiError::internal(format!("failed to build image response: {err}")))
+}
+
+fn decode_image_reference(raw: &str) -> String {
+    raw.trim().to_string()
 }
 
 fn content_type_for_reference(reference: &str) -> &'static str {
@@ -135,11 +145,11 @@ async fn upload_image_inner(
 
     image::load_from_memory(&data).map_err(|_| ApiError::bad_request("invalid image file"))?;
 
-    let url = state
+    let (url, key) = state
         .s3
         .upload_image(folder, data, &content_type)
         .await
         .map_err(|err| ApiError::internal(format!("failed to upload image: {err}")))?;
 
-    Ok(Json(UploadImageResp { url }))
+    Ok(Json(UploadImageResp { url, key }))
 }

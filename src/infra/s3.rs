@@ -108,7 +108,7 @@ impl S3Storage {
         folder: &str,
         data: Vec<u8>,
         content_type: &str,
-    ) -> anyhow::Result<String> {
+    ) -> anyhow::Result<(String, String)> {
         let ext = extension_for_content_type(content_type);
         let key = format!("{}/{}/{}.{}", self.key_prefix, folder, Uuid::new_v4(), ext);
 
@@ -129,7 +129,7 @@ impl S3Storage {
             .await
             .map_err(|err| anyhow::anyhow!("failed to upload to s3: {err}"))?;
 
-        Ok(self.public_url(&key))
+        Ok((self.public_url(&key), key))
     }
 
     pub async fn fetch_bytes(&self, reference: &str) -> anyhow::Result<Vec<u8>> {
@@ -189,6 +189,9 @@ impl S3Storage {
         if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
             if let Some(key) = self.resolve_object_key(trimmed) {
                 return self.get_object_bytes(&key).await;
+            }
+            if self.public_reads {
+                return fetch_http_bytes(trimmed).await;
             }
             anyhow::bail!("unsupported image url");
         }
