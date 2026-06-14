@@ -1,8 +1,5 @@
 use axum::{
-    extract::{Query, State},
-    http::{header::SET_COOKIE, HeaderValue},
-    response::IntoResponse,
-    Json,
+    Json, extract::{Query, State}, http::{HeaderValue, header::SET_COOKIE}, response::{IntoResponse, Redirect}
 };
 use axum_extra::extract::CookieJar;
 use chrono::Duration;
@@ -117,7 +114,7 @@ pub async fn issue_verification(state: &AppState, user_id: Uuid, email: &str) ->
 pub async fn verify_email(
     State(state): State<AppState>,
     Query(params): Query<VerifyEmailParams>,
-) -> ApiResult<Json<MessageResp>> {
+) -> ApiResult<impl IntoResponse> {
     let token = params
         .token
         .ok_or_else(|| ApiError::bad_request("missing token"))?;
@@ -135,7 +132,7 @@ pub async fn verify_email(
                 "email_verified" => Some(true)
             );
             query_delete!(&state.pool, "email_tokens", "id", et.id);
-            Ok(message("email verified"))
+            Ok(Redirect::to(format!("{}/auth/login", state.config.origin.as_str()).as_str()).into_response())
         }
         _ => Err(ApiError::bad_request("invalid or expired token")),
     }
