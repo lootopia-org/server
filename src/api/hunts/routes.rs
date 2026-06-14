@@ -4,7 +4,7 @@ use axum::{
 };
 
 use crate::{
-    api::hunts::{hunt_steps, step_photo_sessions},
+    api::hunts::{hunt_steps, live_ops, step_photo_sessions},
     hunts::handlers::{
         create_hunt, delete_hunt, get_hunt, get_hunt_analytics, get_hunt_participants,
         hunts_in_progrss, join_hunt, leave_hunt, list_hunts, pause_hunt, update_hunt,
@@ -24,6 +24,7 @@ pub fn router() -> Router<AppState> {
         .route("/{id}/analytics", get(get_hunt_analytics))
         .route("/{id}/pause", post(pause_hunt))
         .route("/{id}/steps/sync", put(sync_hunt_steps))
+        .merge(live_ops::routes::router())
         .nest("/step-photo-sessions", step_photo_sessions::routes::router())
         .route("/{id}", get(get_hunt))
         .route("/{id}", patch(update_hunt))

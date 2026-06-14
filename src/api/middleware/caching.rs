@@ -76,6 +76,80 @@ fn hunt_scoped_cache_keys(path: &str) -> Vec<String> {
     ]
 }
 
+fn profile_cache_key(user_id: Uuid) -> String {
+    format!("profile:{}", user_id)
+}
+
+fn joined_cache_key(user_id: Uuid) -> String {
+    format!("joined:{}", user_id)
+}
+
+fn should_skip_response_cache(path: &str) -> bool {
+    path.contains("/step-photo-sessions")
+}
+
+fn is_profile_request(path: &str, pattern: &str) -> bool {
+    path == "/profile"
+        || path.starts_with("/profile/")
+        || pattern == "/profile"
+        || (pattern == "/" && path == "/profile")
+}
+
+fn is_joined_hunts_request(path: &str, pattern: &str) -> bool {
+    path.ends_with("/joined") || pattern.ends_with("/joined")
+}
+
+fn affects_joined_hunts(path: &str, pattern: &str) -> bool {
+    is_joined_hunts_request(path, pattern)
+        || path.ends_with("/join")
+        || path.ends_with("/leave")
+        || pattern.ends_with("/join")
+        || pattern.ends_with("/leave")
+}
+
+fn hunt_analytics_cache_key(path: &str, pattern: &str) -> Option<String> {
+    if pattern == "/hunt/{id}/analytics" || path.contains("/analytics") {
+        hunt_id_from_path(path).map(|id| format!("hunt_analytics:{id}"))
+    } else {
+        None
+    }
+}
+
+fn get_cache_key(path: &str, pattern: &str, user: Option<&User>) -> String {
+    if let Some(user) = user {
+        if is_profile_request(path, pattern) {
+            return profile_cache_key(user.id);
+        }
+        if is_joined_hunts_request(path, pattern) {
+            return joined_cache_key(user.id);
+        }
+    }
+
+    hunt_analytics_cache_key(path, pattern).unwrap_or_else(|| primary_key(pattern, path))
+}
+
+fn invalidate_keys_for_mutation(path: &str, pattern: &str, user: Option<&User>) -> Vec<String> {
+    let mut keys = derive_cache_keys(pattern, path);
+    keys.extend(hunt_scoped_cache_keys(path));
+    keys.push("hunt_analytics".to_string());
+
+    if let Some(user) = user {
+        if is_profile_request(path, pattern) {
+            keys.push(profile_cache_key(user.id));
+            keys.push(joined_cache_key(user.id));
+            keys.push("joined".to_string());
+        }
+        if affects_joined_hunts(path, pattern) {
+            keys.push(joined_cache_key(user.id));
+            // Legacy shared key used before per-user scoping.
+            keys.push("joined".to_string());
+        }
+    }
+
+    keys.dedup();
+    keys
+}
+
 pub async fn cache_middleware(
     axum::extract::State(state): axum::extract::State<AppState>,
     req: Request,
@@ -98,15 +172,11 @@ pub async fn cache_middleware(
 
     match method {
         Method::GET => {
-            let key = match (pattern.as_str(), req.extensions().get::<User>()) {
-                (p, Some(user)) if p == "/profile" => {
-                    format!("profile:{}", user.id)
-                }
-                (p, _) if p == "/hunt/{id}/analytics" => hunt_id_from_path(&path)
-                    .map(|id| format!("hunt_analytics:{id}"))
-                    .unwrap_or_else(|| primary_key(&pattern, &path)),
-                _ => primary_key(&pattern, &path),
-            };
+            if should_skip_response_cache(&path) {
+                return next.run(req).await;
+            }
+
+            let key = get_cache_key(&path, &pattern, req.extensions().get::<User>());
 
             if let Ok(Some(cached)) = state.event_handler.get::<String>(&key).await {
                 return (
@@ -137,10 +207,12 @@ pub async fn cache_middleware(
         }
 
         Method::POST | Method::PATCH | Method::PUT | Method::DELETE => {
-            let mut keys = derive_cache_keys(&pattern, &path);
-            keys.extend(hunt_scoped_cache_keys(&path));
-            keys.push("hunt_analytics".to_string());
-            keys.dedup();
+            if should_skip_response_cache(&path) {
+                return next.run(req).await;
+            }
+
+            let keys =
+                invalidate_keys_for_mutation(&path, &pattern, req.extensions().get::<User>());
             let response = next.run(req).await;
 
             if response.status().is_success() && !keys.is_empty() {

@@ -18,7 +18,6 @@ RUN mkdir -p src src/bin \
  && rm -rf src
 
 COPY . .
-RUN cargo update
 RUN cargo build --release --bin server --bin migrate
 
 FROM debian:bookworm-slim

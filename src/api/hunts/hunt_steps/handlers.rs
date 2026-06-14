@@ -9,9 +9,12 @@ use uuid::Uuid;
 
 use crate::{
     api::{
-        hunts::hunt_steps::{
-            dto::{CompleteStepReq, CreateStepReq, HuntStepResp, SyncHuntStepsReq, UpdateHuntStep},
-            models::{HuntStep, HuntStepCompletion},
+        hunts::{
+            hunt_steps::{
+                dto::{CompleteStepReq, CreateStepReq, HuntStepResp, SyncHuntStepsReq, UpdateHuntStep},
+                models::{HuntStep, HuntStepCompletion},
+            },
+            live_ops::handlers::load_step_override,
         },
         middleware::ownership::{OwnedHunt, OwnedHuntStep},
     },
@@ -107,6 +110,11 @@ pub async fn complete_step(
         return Err(ApiError::bad_request("hunt is not active"));
     }
 
+    let live_override = load_step_override(&state, step.hunt_id, id).await?;
+    if live_override.as_ref().and_then(|value| value.paused) == Some(true) {
+        return Err(ApiError::bad_request("step is paused by organizer"));
+    }
+
     let already_done: bool = query_scale!(
         &state.pool,
         "SELECT EXISTS(SELECT 1 FROM hunt_step_completions WHERE user_id = $1 AND step_id = $2)",
@@ -118,6 +126,12 @@ pub async fn complete_step(
     }
 
     if let (Some(step_lat), Some(step_lng)) = (step.latitude.as_deref(), step.longitude.as_deref()) {
+        let (check_lat, check_lng) = if let Some(redirect) = live_override.as_ref().and_then(|value| value.redirect.as_ref()) {
+            (redirect.latitude.to_string(), redirect.longitude.to_string())
+        } else {
+            (step_lat.to_string(), step_lng.to_string())
+        };
+
         let (Some(user_lat), Some(user_lng)) =
             (auth.user.latitude.as_deref(), auth.user.longitude.as_deref())
         else {
@@ -126,7 +140,7 @@ pub async fn complete_step(
             ));
         };
 
-        if !within_proximity(user_lat, user_lng, step_lat, step_lng, PROXIMITY_THRESHOLD_METERS) {
+        if !within_proximity(&user_lat, &user_lng, &check_lat, &check_lng, PROXIMITY_THRESHOLD_METERS) {
             return Err(ApiError::bad_request("not in the right location"));
         }
     }

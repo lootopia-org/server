@@ -1,5 +1,8 @@
 use axum::{
+    body::Body,
     extract::{Multipart, Query, State},
+    http::{header, StatusCode},
+    response::Response,
     Json,
 };
 use serde::Deserialize;
@@ -17,6 +20,51 @@ const MAX_UPLOAD_BYTES: usize = 5 * 1024 * 1024;
 #[serde(rename_all = "camelCase")]
 pub struct UploadImageQuery {
     pub kind: Option<String>,
+}
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ViewImageQuery {
+    pub url: String,
+}
+
+pub async fn view_image(
+    State(state): State<AppState>,
+    _auth: AuthedUser,
+    Query(query): Query<ViewImageQuery>,
+) -> ApiResult<Response> {
+    let reference = query.url.trim();
+    if reference.is_empty() {
+        return Err(ApiError::bad_request("url is required"));
+    }
+
+    let bytes = state
+        .s3
+        .read_stored_image(reference)
+        .await
+        .map_err(|_| ApiError::not_found("image not found"))?;
+
+    let content_type = content_type_for_reference(reference);
+
+    Response::builder()
+        .status(StatusCode::OK)
+        .header(header::CONTENT_TYPE, content_type)
+        .header(header::CACHE_CONTROL, "private, max-age=300")
+        .body(Body::from(bytes))
+        .map_err(|err| ApiError::internal(format!("failed to build image response: {err}")))
+}
+
+fn content_type_for_reference(reference: &str) -> &'static str {
+    let lower = reference.to_ascii_lowercase();
+    if lower.ends_with(".png") {
+        "image/png"
+    } else if lower.ends_with(".webp") {
+        "image/webp"
+    } else if lower.ends_with(".gif") {
+        "image/gif"
+    } else {
+        "image/jpeg"
+    }
 }
 
 pub async fn upload_image(

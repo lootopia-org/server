@@ -159,6 +159,15 @@ impl S3Storage {
             }
         }
 
+        // Any host — match /{bucket}/{key_prefix}/… (internal k8s URLs, etc.)
+        let marker = format!("/{}/{}/", self.bucket, self.key_prefix);
+        if let Some(rest) = url.split(&marker).nth(1) {
+            let suffix = rest.split(['?', '#']).next()?.trim_start_matches('/');
+            if !suffix.is_empty() {
+                return Some(format!("{}/{}", self.key_prefix, suffix));
+            }
+        }
+
         let virtual_host = format!("https://{}.s3.", self.bucket);
         if url.starts_with(&virtual_host) {
             let marker = ".amazonaws.com/";
@@ -168,6 +177,27 @@ impl S3Storage {
         }
 
         None
+    }
+
+    /// Read an uploaded image by its stored URL or object key (S3 only — no arbitrary HTTP).
+    pub async fn read_stored_image(&self, reference: &str) -> anyhow::Result<Vec<u8>> {
+        let trimmed = reference.trim();
+        if trimmed.is_empty() {
+            anyhow::bail!("empty image reference");
+        }
+
+        if trimmed.starts_with("http://") || trimmed.starts_with("https://") {
+            let key = self
+                .key_from_url(trimmed)
+                .ok_or_else(|| anyhow::anyhow!("unsupported image url"))?;
+            return self.get_object_bytes(&key).await;
+        }
+
+        if trimmed.contains('/') {
+            return self.get_object_bytes(trimmed).await;
+        }
+
+        decode_base64_bytes(trimmed)
     }
 
     async fn get_object_bytes(&self, key: &str) -> anyhow::Result<Vec<u8>> {
