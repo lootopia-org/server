@@ -16,6 +16,17 @@ use uuid::Uuid;
 /// TTL for cached GET JSON responses (seconds).
 pub const RESPONSE_CACHE_TTL_SECS: u64 = 600;
 
+/// Redis key for GET `/hunt` list responses (all filter variants share this key).
+pub const HUNT_LIST_CACHE_KEY: &str = "hunt";
+
+fn is_hunt_list_request(path: &str) -> bool {
+    path == "/hunt" || path == "/hunt/"
+}
+
+fn is_hunt_route(path: &str) -> bool {
+    is_hunt_list_request(path) || path.starts_with("/hunt/")
+}
+
 fn derive_cache_keys(pattern: &str, real_path: &str) -> Vec<String> {
     let pat_segs: Vec<&str> = pattern.trim_start_matches('/').split('/').collect();
     let real_segs: Vec<&str> = real_path.trim_start_matches('/').split('/').collect();
@@ -134,6 +145,10 @@ fn hunt_participants_cache_key(path: &str, pattern: &str) -> Option<String> {
 }
 
 fn get_cache_key(path: &str, pattern: &str, user: Option<&User>) -> String {
+    if is_hunt_list_request(path) {
+        return HUNT_LIST_CACHE_KEY.to_string();
+    }
+
     if let Some(user) = user {
         if is_profile_request(path, pattern) {
             return profile_cache_key(user.id);
@@ -180,6 +195,11 @@ fn invalidate_keys_for_mutation(path: &str, pattern: &str, user: Option<&User>) 
     let mut keys = derive_cache_keys(pattern, path);
     keys.extend(hunt_scoped_cache_keys(path));
     keys.push("hunt_analytics".to_string());
+
+    // Nested route patterns may not derive the shared list key; always clear it on hunt writes.
+    if is_hunt_route(path) {
+        keys.push(HUNT_LIST_CACHE_KEY.to_string());
+    }
 
     if let Some(user) = user {
         if is_profile_request(path, pattern) {

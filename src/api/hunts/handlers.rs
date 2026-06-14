@@ -139,6 +139,11 @@ pub async fn create_hunt(
         steps: steps.into_iter().map(HuntStepResp::from).collect(),
     };
 
+    state
+        .event_handler
+        .invalidate_hunt_response_cache(hunt_id)
+        .await;
+
     state.event_handler.publish(Event::new(
         event_types::HUNTS_CREATED,
         topics::HUNTS,
@@ -174,6 +179,9 @@ pub async fn update_hunt(
     );
 
     let resp = HuntResp::from(hunt.clone());
+
+    state.event_handler.invalidate_hunt_response_cache(id).await;
+
     state.event_handler.publish(
         Event::new(
             event_types::HUNTS_UPDATED,
@@ -215,6 +223,12 @@ pub async fn pause_hunt(
     );
 
     let resp = HuntResp::from(hunt.clone());
+
+    state
+        .event_handler
+        .invalidate_hunt_response_cache(hunt.id)
+        .await;
+
     state.event_handler.publish(
         Event::new(
             event_types::HUNTS_PAUSED,
@@ -240,6 +254,8 @@ pub async fn delete_hunt(
     if rows.rows_affected() == 0 {
         return Err(ApiError::not_found("hunt not found"));
     }
+
+    state.event_handler.invalidate_hunt_response_cache(id).await;
 
     state.event_handler.publish(
         Event::new(
