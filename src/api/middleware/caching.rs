@@ -124,6 +124,7 @@ fn should_skip_response_cache(path: &str) -> bool {
     path.contains("/step-photo-sessions")
         || path.contains("/step/completed/")
         || path.ends_with("/joined")
+        || path.ends_with("/completed")
         || path.ends_with("/participants")
         || path.starts_with("/upload/image/view")
 }
