@@ -77,7 +77,7 @@ pub struct HuntParticipantResp {
     pub user_id: Uuid,
     pub email: String,
     pub points: Option<i32>,
-    pub level: Option<f64>,
+    pub level: Option<f32>,
     pub completed_hunts: Option<i32>,
     pub points_awarded: i32,
     pub joined_at: Option<chrono::DateTime<chrono::Utc>>,
