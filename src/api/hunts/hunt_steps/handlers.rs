@@ -166,7 +166,7 @@ pub async fn complete_step(
                 .as_ref()
                 .ok_or_else(|| ApiError::bad_request("missing reference photo"))?;
 
-            let matches = compare_step_photos(reference, submitted, &state.s3, 10)
+            let matches = compare_step_photos(reference, submitted, &state.s3, 50)
                 .await
                 .map_err(|err| ApiError::bad_request(format!("invalid photo data: {err}")))?;
 
