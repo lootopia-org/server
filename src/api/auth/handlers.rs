@@ -247,7 +247,7 @@ pub async fn forgot_password(
     );
     email::send_password_reset_email(&state.config, &user.email, &link).await;
 
-    Ok(generic())
+    Ok(Redirect::to(format!("{}/auth/reset-password?token={}", state.config.origin.as_str(), token).as_str()).into_response())
 }
 
 pub async fn reset_password(
