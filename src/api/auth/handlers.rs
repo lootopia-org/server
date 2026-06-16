@@ -1,5 +1,8 @@
 use axum::{
-    Json, extract::{Query, State}, http::{HeaderValue, header::SET_COOKIE}, response::{IntoResponse, Redirect}
+    extract::{Query, State},
+    http::{header::SET_COOKIE, HeaderValue},
+    response::{IntoResponse, Redirect},
+    Json,
 };
 use axum_extra::extract::CookieJar;
 use chrono::Duration;
@@ -132,7 +135,10 @@ pub async fn verify_email(
                 "email_verified" => Some(true)
             );
             query_delete!(&state.pool, "email_tokens", "id", et.id);
-            Ok(Redirect::to(format!("{}/auth/login", state.config.origin.as_str()).as_str()).into_response())
+            Ok(
+                Redirect::to(format!("{}/auth/login", state.config.origin.as_str()).as_str())
+                    .into_response(),
+            )
         }
         _ => Err(ApiError::bad_request("invalid or expired token")),
     }
@@ -243,11 +249,11 @@ pub async fn forgot_password(
 
     let link = format!(
         "{}/auth/reset-password?token={}",
-        state.config.public_base_url, token
+        state.config.frontend_url, token
     );
     email::send_password_reset_email(&state.config, &user.email, &link).await;
 
-    Ok(Redirect::to(format!("{}/auth/reset-password?token={}", state.config.origin.as_str(), token).as_str()).into_response())
+    Ok(generic())
 }
 
 pub async fn reset_password(
@@ -304,9 +310,9 @@ pub async fn mfa_totp(
     Json(req): Json<MfaTotpReq>,
 ) -> ApiResult<Json<TokenResp>> {
     let token = jar
-    .get("session")
-    .map(|c| c.value().to_string())
-    .ok_or(ApiError::unauthorized("token not found"))?;
+        .get("session")
+        .map(|c| c.value().to_string())
+        .ok_or(ApiError::unauthorized("token not found"))?;
     let session = query_get!(&state.pool, Session, "sessions", "token", &token);
 
     let session = match session {

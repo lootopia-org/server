@@ -40,6 +40,7 @@ pub struct Config {
     pub public_base_url: String,
     pub s3: S3Config,
     pub jwt_secret: String,
+    pub frontend_url: String,
     pub email_verify_ttl_seconds: i64,
     pub ceremony_ttl_seconds: i64,
     pub require_verified_email: bool,
@@ -118,8 +119,7 @@ pub fn load_config() -> Config {
                 .unwrap_or_else(|_| "us-east-1".to_string()),
             key_prefix: env_str("S3_KEY_PREFIX", "lootopia"),
             endpoint: Some(
-                env::var("S3_ENDPOINT")
-                    .unwrap_or_else(|_| "http://127.0.0.1:9000".to_string()),
+                env::var("S3_ENDPOINT").unwrap_or_else(|_| "http://127.0.0.1:9000".to_string()),
             ),
             public_base_url: env::var("S3_PUBLIC_BASE_URL")
                 .ok()
@@ -128,6 +128,7 @@ pub fn load_config() -> Config {
             secret_access_key: env_str("AWS_SECRET_ACCESS_KEY", "rustfsadmin"),
         },
         jwt_secret: env_str("JWT_SECRET", "dev-only-insecure-jwt-secret-change-me"),
+        frontend_url: env_str("FRONTEND", "http://localhost:3000"),
         email_verify_ttl_seconds: read_env("EMAIL_VERIFY_TTL_SECONDS", 60 * 60 * 24),
         ceremony_ttl_seconds: read_env("CEREMONY_TTL_SECONDS", 300),
         require_verified_email: read_env("REQUIRE_VERIFIED_EMAIL", true),
